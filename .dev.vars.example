@@ -3,3 +3,6 @@
 ADMIN_PASSCODE=change-me
 # Optional: require this passcode before anyone can use the chat API.
 # APP_PASSCODE=
+# Hosted mode uses Cloudflare secrets instead of this file:
+#   npx wrangler secret put APP_PASSCODE --env hosted
+#   npx wrangler secret put ADMIN_PASSCODE --env hosted

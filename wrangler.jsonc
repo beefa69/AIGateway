@@ -4,15 +4,43 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+
+  // ---------------------------------------------------------------- local dev (npm run dev)
   "d1_databases": [
-    // Local-only demo: wrangler dev keeps this database on disk under .wrangler/.
-    // The id is a placeholder; it only matters if you ever deploy.
+    // wrangler dev keeps this database on disk under .wrangler/. The id is a placeholder.
     { "binding": "DB", "database_name": "switchyard-demo", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
   ],
   "vars": {
     "SWITCHYARD_URL": "http://127.0.0.1:4000",
-    "RATE_LIMIT_PER_MIN": "30"
+    "RATE_LIMIT_PER_MIN": "30",
+    "GLOBAL_RATE_LIMIT_PER_MIN": "60",
+    "DAILY_CAP_USD": "5"
   },
-  // Loopback only. The audience sees it through your Zoom screen share.
-  "dev": { "ip": "127.0.0.1", "port": 8787 }
+  // Loopback only.
+  "dev": { "ip": "127.0.0.1", "port": 8787 },
+
+  // ---------------------------------------------------------------- hosted (npm run deploy)
+  // Workers Free plan. Switchyard stays on your PC; the Worker reaches it through a Cloudflare
+  // Tunnel via a Workers VPC Service binding, so Switchyard has no public URL.
+  "env": {
+    "hosted": {
+      "name": "switchyard-router-demo",
+      "workers_dev": true,
+      "preview_urls": false,
+      "d1_databases": [
+        { "binding": "DB", "database_name": "switchyard-demo", "database_id": "e0addd59-86ee-48bd-8256-c0948fcf2b5f", "migrations_dir": "migrations" }
+      ],
+      "vpc_services": [
+        { "binding": "SWITCHYARD", "service_id": "01a1f661-4ac2-7950-aa1d-b31bbe31264f" }
+      ],
+      "vars": {
+        "SWITCHYARD_URL": "unused-when-SWITCHYARD-is-bound",
+        "RATE_LIMIT_PER_MIN": "30",
+        "GLOBAL_RATE_LIMIT_PER_MIN": "60",
+        "DAILY_CAP_USD": "5",
+        "REQUIRE_PASSCODE": "true"
+      }
+      // Secrets (set with `npx wrangler secret put <NAME> --env hosted`): APP_PASSCODE, ADMIN_PASSCODE
+    }
+  }
 }

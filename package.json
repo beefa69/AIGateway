@@ -10,7 +10,11 @@
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "dev": "npm run router:up && npm run db:migrate && wrangler dev",
     "typecheck": "tsc --noEmit",
-    "demo:run": "node scripts/run-demo.mjs"
+    "demo:run": "node scripts/run-demo.mjs",
+    "host:up": "docker compose --profile hosted up -d --build --wait",
+    "host:down": "docker compose --profile hosted down",
+    "host:logs": "docker compose --profile hosted logs -f",
+    "deploy": "wrangler d1 migrations apply DB --env hosted --remote && wrangler deploy --env hosted"
   },
   "dependencies": {
     "hono": "4.13.19"

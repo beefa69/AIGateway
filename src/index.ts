@@ -6,11 +6,38 @@ import demoQuestions from "./demo-questions.json";
 type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** Hosted: Workers VPC Service binding that reaches Switchyard through the Cloudflare Tunnel. */
+  SWITCHYARD?: Fetcher;
+  /** Local dev: plain URL of the Docker Compose Switchyard. Ignored when SWITCHYARD is bound. */
   SWITCHYARD_URL: string;
-  RATE_LIMIT_PER_MIN: string;
-  APP_PASSCODE?: string; // optional: require a passcode for the API
-  ADMIN_PASSCODE?: string; // required for "Reset demo data"
+  RATE_LIMIT_PER_MIN: string; // per browser session
+  GLOBAL_RATE_LIMIT_PER_MIN: string; // across everyone
+  DAILY_CAP_USD: string; // stop new chats once today's (UTC) logged spend reaches this
+  REQUIRE_PASSCODE?: string; // "true" when hosted: refuse to serve the API without APP_PASSCODE
+  APP_PASSCODE?: string; // shared passcode for the API (secret)
+  ADMIN_PASSCODE?: string; // required for "Reset demo data" (secret)
 };
+
+/** Calls Switchyard: through the VPC binding when hosted, or the local URL in dev. */
+function switchyard(env: Env, path: string, init?: RequestInit): Promise<Response> {
+  if (env.SWITCHYARD) return env.SWITCHYARD.fetch(`http://switchyard:4000${path}`, init);
+  return fetch(`${env.SWITCHYARD_URL.replace(/\/$/, "")}${path}`, init);
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** The cookie holds a hash of the passcode, never the passcode itself. */
+const passToken = (pass: string) => sha256Hex(`switchyard-demo:v1:${pass}`);
 
 type ModelInfo = { label: string; color: string; tier: string; inputPerMTok: number; outputPerMTok: number };
 const MODELS = config.models as Record<string, ModelInfo>;
@@ -24,20 +51,30 @@ function cost(model: ModelInfo | undefined, inTok: number, outTok: number): numb
 
 const app = new Hono<{ Bindings: Env }>();
 
-// ------------------------------------------------------------ optional passcode gate
+// ------------------------------------------------------------ passcode gate
 app.use("/api/*", async (c, next) => {
   const pass = c.env.APP_PASSCODE;
-  if (!pass || c.req.path === "/api/login") return next();
-  if (getCookie(c, "demo_pass") === pass) return next();
+  if (!pass) {
+    // Fail closed when hosted: a missing secret must never mean "open to everyone".
+    if (c.env.REQUIRE_PASSCODE === "true") return c.json({ error: "server misconfigured: APP_PASSCODE not set" }, 503);
+    return next();
+  }
+  if (c.req.path === "/api/login") return next();
+  if (safeEqual(getCookie(c, "demo_pass") ?? "", await passToken(pass))) return next();
   return c.json({ error: "passcode required" }, 401);
 });
 
 app.post("/api/login", async (c) => {
   const { passcode } = await c.req.json<{ passcode?: string }>().catch(() => ({ passcode: "" }));
-  if (!c.env.APP_PASSCODE || passcode === c.env.APP_PASSCODE) {
-    setCookie(c, "demo_pass", c.env.APP_PASSCODE ?? "", { httpOnly: true, sameSite: "Strict", path: "/" });
+  const pass = c.env.APP_PASSCODE;
+  if (pass && safeEqual(String(passcode ?? ""), pass)) {
+    setCookie(c, "demo_pass", await passToken(pass), {
+      httpOnly: true, sameSite: "Strict", path: "/", maxAge: 60 * 60 * 12,
+      secure: new URL(c.req.url).protocol === "https:",
+    });
     return c.json({ ok: true });
   }
+  await new Promise((r) => setTimeout(r, 1000)); // slow down guessing
   return c.json({ error: "wrong passcode" }, 401);
 });
 
@@ -78,11 +115,27 @@ app.post("/api/chat", async (c) => {
   if ((recent?.n ?? 0) >= limit) {
     return c.json({ error: `rate limit: max ${limit} requests per minute per session` }, 429);
   }
+  // Global limit (session ids come from the browser, so they alone can't bound total traffic).
+  const globalLimit = Number(c.env.GLOBAL_RATE_LIMIT_PER_MIN || 60);
+  const all = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM requests WHERE ts > ?")
+    .bind(Date.now() - 60_000)
+    .first<{ n: number }>();
+  if ((all?.n ?? 0) >= globalLimit) {
+    return c.json({ error: `the demo is busy: max ${globalLimit} requests per minute in total` }, 429);
+  }
+  // Daily spend cap, from the logged per-request costs (answer + judge), reset at 00:00 UTC.
+  const cap = Number(c.env.DAILY_CAP_USD || 5);
+  const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
+  const spent = await c.env.DB.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS usd FROM requests WHERE ts >= ?")
+    .bind(dayStart.getTime())
+    .first<{ usd: number }>();
+  if ((spent?.usd ?? 0) >= cap) {
+    return c.json({ error: `daily spend cap of $${cap} reached; the demo reopens at 00:00 UTC` }, 429);
+  }
 
   const id = crypto.randomUUID();
   const started = Date.now();
   const prompt = messages[messages.length - 1].content.slice(0, 500);
-  const base = c.env.SWITCHYARD_URL.replace(/\/$/, "");
 
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -107,7 +160,7 @@ app.post("/api/chat", async (c) => {
   const run = async () => {
     let model: string | null = null;
     try {
-      const upstream = await fetch(`${base}/v1/messages`, {
+      const upstream = await switchyard(c.env, "/v1/messages", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -163,7 +216,7 @@ app.post("/api/chat", async (c) => {
       }
 
       const latency = Date.now() - started;
-      const { reason, routerCost } = await fetchRouting(base, id);
+      const { reason, routerCost } = await fetchRouting(c.env, id);
       const answerCost = cost(model ? MODELS[model] : undefined, inTok, outTok);
       const actual = answerCost == null ? null : answerCost + (routerCost ?? 0);
       const baseline = cost(BASELINE, inTok, outTok); // Opus-only would need no judge
@@ -192,9 +245,9 @@ app.post("/api/chat", async (c) => {
  * `evidence` (null for custom mode; scores for some algorithms). `targets.judge` gives the judge
  * call's token usage, which we price with models.json.
  */
-async function fetchRouting(base: string, sessionId: string): Promise<{ reason: string | null; routerCost: number | null }> {
+async function fetchRouting(env: Env, sessionId: string): Promise<{ reason: string | null; routerCost: number | null }> {
   try {
-    const res = await fetch(`${base}/v1/routing/session-stats?session_id=${encodeURIComponent(sessionId)}`);
+    const res = await switchyard(env, `/v1/routing/session-stats?session_id=${encodeURIComponent(sessionId)}`);
     if (!res.ok) return { reason: null, routerCost: null };
     const stats: any = await res.json();
     const outcomes: any[] = stats.outcomes ?? [];
@@ -246,9 +299,12 @@ app.post("/api/reset", async (c) => {
   const admin = c.env.ADMIN_PASSCODE;
   const { passcode } = await c.req.json<{ passcode?: string }>().catch(() => ({ passcode: "" }));
   if (!admin) return c.json({ error: "reset disabled: set ADMIN_PASSCODE in .dev.vars" }, 403);
-  if (passcode !== admin) return c.json({ error: "wrong admin passcode" }, 403);
+  if (!safeEqual(String(passcode ?? ""), admin)) {
+    await new Promise((r) => setTimeout(r, 1000));
+    return c.json({ error: "wrong admin passcode" }, 403);
+  }
   await c.env.DB.prepare("DELETE FROM requests").run();
-  await fetch(`${c.env.SWITCHYARD_URL.replace(/\/$/, "")}/v1/stats/reset`, { method: "POST" }).catch(() => {});
+  await switchyard(c.env, "/v1/stats/reset", { method: "POST" }).catch(() => {});
   return c.json({ ok: true });
 });
 

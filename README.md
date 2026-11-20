@@ -175,13 +175,60 @@ to 30 requests per minute per browser session.
   `docker compose run --rm switchyard --config /config/routes.toml --dry-run`.
 - **Switchyard version:** `SWITCHYARD_COMMIT` in `switchyard/Dockerfile`, then `npm run router:up`.
 
-## Deploying to Cloudflare later (not set up)
+## Host it on Cloudflare (free)
 
-The Worker is a normal Cloudflare Worker with static assets and D1. To host it you would need
-`wrangler d1 create`, a real `database_id` in `wrangler.jsonc`, `SWITCHYARD_URL` pointing at a reachable
-Switchyard (a Cloudflare Container on the Workers Paid plan, or this Docker Compose service behind a
-Cloudflare Tunnel), and Cloudflare Access or `APP_PASSCODE` in front of it. None of that is needed for
-the local demo.
+The hosted version costs nothing on Cloudflare: Workers Free, D1 free tier, Cloudflare Tunnel, and
+Workers VPC, which is free on all plans during its beta. Anthropic usage is billed as before.
+Switchyard keeps running in Docker on your PC, so **the hosted demo only works while your PC is on and
+`npm run host:up` is running.**
+
+```
+Colleague's browser ──HTTPS──► Worker on workers.dev (passcode, rate limits, $5/day cap) ──► D1
+                                   │ Workers VPC Service binding (private, no public URL)
+                                   ▼
+                        Cloudflare Tunnel ◄──outbound only── cloudflared (Docker, your PC) ──► switchyard:4000
+```
+
+Security model:
+
+- **Switchyard has no public address.** The tunnel has no public hostname, and only this Worker's
+  VPC binding can reach `switchyard:4000`. `cloudflared` makes outbound connections only, so no ports
+  are opened on your PC or router. Docker still binds Switchyard's local port to 127.0.0.1 only.
+- **A shared passcode** (`APP_PASSCODE` secret) guards every `/api/*` call. The cookie holds a hash,
+  not the passcode. Wrong guesses are slowed to one per second. If the secret is missing, the hosted
+  Worker refuses to serve (`REQUIRE_PASSCODE=true`) rather than opening up.
+- **Spend limits:** 30 requests per minute per session, 60 per minute in total, and a $5 per day cap
+  (UTC) on logged Anthropic spend. Keep a monthly limit in the Claude Console as a backstop.
+- **The API key never leaves your PC.** It is in `.env`, read only by the Switchyard container. The tunnel
+  token (`TUNNEL_TOKEN`, also in `.env`) is read only by the `cloudflared` container.
+- The pages themselves (HTML, JS) are public, but they hold no data or secrets. Everything else goes through
+  the passcode-protected API.
+
+One-time setup (all with `npx wrangler`, logged in to your account):
+
+```powershell
+npx wrangler d1 create switchyard-demo          # copy the database_id into env.hosted in wrangler.jsonc
+npx wrangler tunnel create switchyard-demo      # note the tunnel id
+npx wrangler vpc service create switchyard --type http --tunnel-id <TUNNEL_ID> --hostname switchyard --http-port 4000
+                                                # copy the service id into env.hosted.vpc_services
+npx wrangler secret put APP_PASSCODE --env hosted     # the passcode you give colleagues
+npx wrangler secret put ADMIN_PASSCODE --env hosted   # protects "Reset demo data"
+```
+
+Put the tunnel token in `.env` as `TUNNEL_TOKEN=`. You can copy it from the dashboard: Workers & Pages →
+VPC → Tunnels → your tunnel → install command, the long value after `--token`.
+
+Each time you present:
+
+```powershell
+npm run host:up      # Switchyard + cloudflared in Docker
+npm run deploy       # only after code changes: migrates the remote D1 and deploys the Worker
+```
+
+Stop it with `npm run host:down`. The site then shows an error until you start it again.
+
+Notes: Workers VPC needs the tunnel to connect over QUIC (outbound UDP 7844), which the Compose file
+forces. `npm run dev` still runs the fully local version, which needs no tunnel and no passcode.
 
 ## Routing results from the local test run (2026-11-20)
 

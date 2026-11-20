@@ -1,11 +1,14 @@
+# Values come from .env (gitignored), which Compose reads automatically.
+# Each container gets only the variable it needs.
 services:
   switchyard:
     build:
       context: ./switchyard
     image: switchyard-demo:local
-    env_file: .env            # must define ANTHROPIC_API_KEY (see .env.example)
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
     ports:
-      - "127.0.0.1:4000:4000" # loopback only: nothing outside this PC can reach it
+      - "127.0.0.1:4000:4000" # loopback only: nothing else on your network can reach it
     volumes:
       - ./switchyard/routes.toml:/config/routes.toml:ro  # edit config without rebuilding
     healthcheck:
@@ -13,4 +16,18 @@ services:
       interval: 3s
       timeout: 2s
       retries: 20
+    restart: unless-stopped
+
+  # Hosted mode only (`npm run host:up`). Opens an outbound-only Cloudflare Tunnel so the
+  # hosted Worker can reach `switchyard:4000` through its Workers VPC Service binding.
+  # The tunnel has no public hostname: nothing on the internet can address Switchyard directly.
+  cloudflared:
+    profiles: ["hosted"]
+    image: cloudflare/cloudflared:2026.11.1
+    command: ["tunnel", "--no-autoupdate", "--protocol", "quic", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}  # set in .env for hosted mode
+    depends_on:
+      switchyard:
+        condition: service_healthy
     restart: unless-stopped
