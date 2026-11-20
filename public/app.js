@@ -79,7 +79,7 @@ async function send(text) {
   history.push({ role: "user", content: text });
   const out = bubble("assistant", "");
   const textNode = document.createElement("div"); textNode.className = "typing"; out.appendChild(textNode);
-  const tag = document.createElement("div"); tag.className = "tag"; tag.textContent = "routing…"; out.appendChild(tag);
+  const tag = document.createElement("div"); tag.className = "tag"; tag.textContent = "Haiku judge is choosing a model…"; out.appendChild(tag);
   let answer = "";
   const strategy = $("strategy").value;
 
@@ -112,6 +112,12 @@ async function send(text) {
           if (data.stopReason === "max_tokens") bits.push(`cut off at ${cfg.maxTokens} tokens`);
           if (data.empty) textNode.textContent = "(The model used its whole token budget thinking and returned no text.)";
           tag.append(bits.join(" · "));
+          if (data.reason) {
+            const judge = document.createElement("div");
+            judge.className = "judge";
+            judge.textContent = `⚖ ${data.reason}`;
+            out.appendChild(judge);
+          }
           totals.actual += data.costUsd ?? 0; totals.baseline += data.baselineUsd ?? 0; renderTotals();
         }
       }

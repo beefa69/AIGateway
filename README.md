@@ -60,22 +60,26 @@ Both servers listen on `127.0.0.1` only, so nobody else on your network can reac
 
 ## Strategies (the dropdown)
 
-One Switchyard server exposes three routes in `switchyard/routes.toml`. The dropdown sends the chosen
-route's `id` as the request's `model`, so switching strategy needs no restart and no second config.
+The demo is about a **Haiku judge** reading each question and picking a model, so the dropdown offers the
+two judge-based strategies. Both are routes in one Switchyard server (`switchyard/routes.toml`). The
+dropdown sends the route's `id` as the request's `model`, so switching needs no restart.
 
-| Dropdown | Route id | Switchyard type | Models |
+| Dropdown | Route id | Switchyard type | What the judge does |
 |---|---|---|---|
-| Tiered classifier | `switchyard/tiered` | `llm_classifier`, `mode = "custom"` | Haiku judges, picks Haiku / Sonnet / Opus |
-| Task classifier | `switchyard/task` | `llm_classifier`, `mode = "capability"` | Haiku estimates `p_solve`; below 0.6 goes to Opus |
-| Auto | `switchyard/auto` | `auto` (Stage router preset) | Haiku (efficient) / Opus (capable) |
+| Tiered classifier (default) | `switchyard/tiered` | `llm_classifier`, `mode = "custom"` | Picks Haiku, Sonnet or Opus |
+| Task classifier | `switchyard/task` | `llm_classifier`, `mode = "capability"` | Scores the chance Haiku solves it; below 85% (90% when unsure) it goes to Opus |
+
+Each reply shows the judge's decision on its own line, for example "⚖ Haiku judge picked Opus", or for
+Task "⚖ Haiku judge: 60% chance Haiku solves it (< 90% needed) → Opus".
+
+**Auto is left out of the dropdown on purpose.** `routes.toml` still defines `switchyard/auto`
+(Switchyard's default preset), but it doesn't use a judge or read the question. It routes coding agents
+on tool-call signals (errors, loops, stalls), so plain chat always stays on Haiku. The Switchyard
+docs say this is expected. To bring it back, add it to `strategies` in `models.json`.
 
 Things worth telling your audience:
 
-- **Auto keeps plain chat on Haiku, and that is by design.** It routes on tool-call signals
-  (errors, loops, stalls) from coding agents. A chat with no tool history has no signals, so it
-  "falls open" to the efficient model. The Switchyard docs list this under troubleshooting:
-  "Every fresh chat selects the efficient model: expected for this preset without tool signals."
-- **Only the custom classifier mode can choose among three models.** Auto, Stage and capability mode are two-tier.
+- **Only custom mode can choose among three models.** Capability mode and Auto are two-tier.
 - **The judge is a real model call** (Haiku 5.5, `reasoning_effort = "low"`). It adds roughly 1–3 s of latency
   and about $0.0001 per question. The per-turn cost in the UI and on the dashboard includes the judge
   (shown as "incl. judge"). The Opus baseline does not, because sending everything to Opus needs no judge.
@@ -96,10 +100,10 @@ Verified by testing, not assumed:
 - **Routing reason:** the Worker sends `x-switchyard-session-id: <request id>`. Switchyard runs with
   `--routing-log-file`. After the reply, the Worker reads
   `GET /v1/routing/session-stats?session_id=<request id>`, whose `outcomes[].judgments` contain the judge's
-  selection and evidence: the chosen group for Tiered, plus the solve score and threshold for Task. Hover
-  the model badge (chat) or the model cell (dashboard) to see it. Auto produces no per-request judgment, so
-  it shows no reason. The same response's `targets.judge` token counts are priced with `models.json` to
-  get the judge's cost.
+  selection and evidence: the chosen group for Tiered, plus the solve score and threshold for Task. The
+  Worker turns that into the "⚖" line under each reply, which also appears when you hover a model cell on
+  the dashboard. The same response's `targets.judge` token counts are priced with `models.json` to get the
+  judge's cost.
 
 ## Verify routing is active
 
@@ -144,11 +148,12 @@ npm run demo:run
    dashboard (it asks for `ADMIN_PASSCODE`).
 2. In Zoom, share the browser window. Use browser zoom (Ctrl +) to about 125% so the tags are readable.
 3. Start on **Tiered classifier**. Open **Demo questions** and send one easy, one medium and one hard
-   question. Point at the colour-coded badge, latency and cost under each reply, and hover the badge
-   to show the judge's reason.
+   question. Point at the "Haiku judge is choosing a model…" step, then the colour-coded badge, latency
+   and cost, and the "⚖ Haiku judge picked …" line under each reply.
 4. Point at the running total: actual cost vs "if all Opus".
-5. Click **New chat**, switch to **Auto**, and ask a hard question. It stays on Haiku. Explain why:
-   Auto is for agents with tool signals, not plain chat.
+5. Click **New chat**, switch to **Task classifier**, and send an easy and a hard question. The ⚖ line
+   now shows the judge's confidence that Haiku can handle the question, and the threshold it was compared
+   against.
 6. Open **Dashboard**: model share, average latency per model, spend vs Opus baseline, and the recent
    query table (filter by model or strategy; hover a model cell for the reason).
 
@@ -237,16 +242,19 @@ All 15 demo questions per strategy, each sent as a fresh one-message conversatio
 | Strategy | Haiku | Sonnet | Opus | Spend | If all Opus |
 |---|---|---|---|---|---|
 | Tiered classifier | 5 (all easy) | 5 (all medium) | 5 (all hard) | $0.129 | $0.165 |
-| Task classifier | 13 | – | 2 (Node leak, payment design) | $0.049 | $0.152 |
-| Auto | 15 | – | – | $0.004 | $0.152 |
-
-Total for the run: $0.18 (judge calls included).
+| Task classifier, threshold 0.6 | 13 | – | 2 (Node leak, payment design) | $0.049 | $0.152 |
+| Task classifier, threshold 0.85 (current) | 10 | – | 5 (3 hard, 2 medium) | $0.081 | $0.145 |
+| Auto (not in the UI) | 15 | – | – | $0.004 | $0.152 |
 
 - **Tiered** split the set exactly by difficulty, on the first configuration. No tuning was needed.
-- **Task** sends a request to Opus only when the judge's solve probability falls below the threshold
-  (0.6, or 0.7 when the verdict is uncertain). The judge rated most hard questions solvable by Haiku
-  (scores 0.72–0.97), so only two went to Opus. Raise `base_threshold` in `routes.toml` to escalate more.
-- **Auto** sent everything to Haiku. That is expected for chat with no tool signals.
+- **Task** sends a question to Opus when the judge's estimate that Haiku can solve it falls below the
+  threshold. At 0.6 only two questions went to Opus, so the threshold is now `base_threshold = 0.85`
+  with `threshold_step = 0.05` (0.9 when the verdict is uncertain). Opus now gets the Python dedupe bug
+  (judge: 80%), the Node.js leak (60%), the payment design (60%), the word-count function (80%) and the
+  HTTPS explanation (85%, uncertain). The judge still rates the bat-and-ball (97%) and seating (93%)
+  puzzles as easy for Haiku. That's its honest call and a good talking point about judge calibration.
+- **Auto** sent everything to Haiku. That is expected for chat with no tool signals, which is why it's not
+  in the dropdown.
 - The "saved" figure for Tiered is modest because medium questions go to Sonnet and produce long answers.
   Savings are largest when most traffic is easy.
 

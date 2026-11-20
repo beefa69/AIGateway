@@ -255,10 +255,20 @@ async function fetchRouting(env: Env, sessionId: string): Promise<{ reason: stri
     const j = outcomes.flatMap((x) => x.judgments ?? []).at(-1);
     let reason: string | null = null;
     if (j) {
-      const pick = j.category ?? j.target ?? "none";
-      reason = `${o?.algorithm ?? "classifier"}: Haiku judge chose "${pick}"`;
+      // Group/tier names from routes.toml → the model they point at.
+      const PICK: Record<string, string> = { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus", efficient: "Haiku", capable: "Opus" };
+      const raw = String(j.category ?? j.target ?? "none");
+      const pick = PICK[raw] ?? raw;
       const ev = j.evidence ?? o?.evidence;
-      if (ev) reason += ` · ${JSON.stringify(ev).slice(0, 300)}`;
+      if (ev && typeof ev.score === "number" && typeof ev.threshold === "number") {
+        // Capability mode: the judge estimates the cheap model's chance of solving the task.
+        const pct = (x: number) => `${Math.round(x * 100)}%`;
+        const cmp = ev.score >= ev.threshold ? "≥" : "<";
+        reason = `Haiku judge: ${pct(ev.score)} chance Haiku solves it (${cmp} ${pct(ev.threshold)} needed) → ${pick}`;
+      } else {
+        reason = `Haiku judge picked ${pick}`;
+        if (ev) reason += ` · ${JSON.stringify(ev).slice(0, 300)}`;
+      }
     } else if (o?.evidence) {
       reason = `${o.algorithm}: ${JSON.stringify(o.evidence).slice(0, 300)}`;
     }

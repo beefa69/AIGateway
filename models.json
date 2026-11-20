@@ -9,7 +9,7 @@
   },
   "strategies": [
     { "id": "switchyard/tiered", "label": "Tiered classifier (Haiku / Sonnet / Opus)", "description": "Haiku judges each question and picks one of three models (llm_classifier, custom mode)." },
-    { "id": "switchyard/task",   "label": "Task classifier (Haiku / Opus)",           "description": "Haiku estimates whether the cheap model can solve it; otherwise Opus (llm_classifier, capability mode)." },
-    { "id": "switchyard/auto",   "label": "Auto (Stage router, Haiku / Opus)",         "description": "Switchyard's default preset. Routes on tool-call signals, so plain chat stays on Haiku." }
-  ]
+    { "id": "switchyard/task",   "label": "Task classifier (Haiku / Opus)",           "description": "Haiku scores how likely the cheap model is to solve it; below the threshold it goes to Opus (llm_classifier, capability mode)." }
+  ],
+  "_strategiesNote": "switchyard/auto is still defined in switchyard/routes.toml but left out of the UI: it routes on agent tool signals, not on the question, so plain chat always stays on Haiku."
 }
