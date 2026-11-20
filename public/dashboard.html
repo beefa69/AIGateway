@@ -13,11 +13,12 @@
     <nav><a href="/">Chat</a><a href="/dashboard" class="active">Dashboard</a></nav>
   </header>
   <main>
-    <div class="card admin">
+    <div class="card admin" id="preset">
       <div>
         <h2>Routing preset <span class="hint">· admin · applies to everyone, takes effect on the next question</span></h2>
         <div class="presets" id="presetButtons"></div>
         <p class="hint" id="presetDesc"></p>
+        <p class="preset-status" id="presetStatus" role="status"></p>
       </div>
     </div>
     <div class="filters">

@@ -35,8 +35,8 @@ function showPreset(id) {
   const p = cfg.presets?.find((x) => x.id === id);
   if (!p) return;
   $("presetChip").innerHTML = "";
-  $("presetChip").append("Preset: ", Object.assign(document.createElement("b"), { textContent: p.label }));
-  $("presetChip").title = `${p.description} (set by the admin on the dashboard)`;
+  $("presetChip").append("Preset: ", Object.assign(document.createElement("b"), { textContent: p.label }), " ⚙");
+  $("presetChip").title = `${p.description} Click to change it on the dashboard (admin passcode needed).`;
 }
 
 async function init() {

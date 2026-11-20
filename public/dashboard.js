@@ -20,16 +20,26 @@ function renderPresets() {
   $("presetDesc").textContent = cfg.presets.find((p) => p.id === cfg.activePreset)?.description ?? "";
 }
 
+function presetStatus(text, kind = "") {
+  const el = $("presetStatus");
+  el.textContent = text;
+  el.className = `preset-status ${kind}`;
+}
+
 async function setPreset(id) {
-  if (id === cfg.activePreset) return;
+  if (id === cfg.activePreset) {
+    return presetStatus(`${presetLabel(id)} is already the active preset. Pick another one to switch.`);
+  }
   const passcode = prompt(`Admin passcode to switch everyone to "${presetLabel(id)}":`);
-  if (passcode == null) return;
+  if (passcode == null || passcode === "") return presetStatus("Cancelled: no change made.");
+  presetStatus(`Switching to ${presetLabel(id)}…`);
   const res = await api("/api/admin/preset", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ passcode, preset: id }) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) return alert(d.error ?? "Could not change preset");
+  if (!res.ok) return presetStatus(`Not changed: ${d.error ?? `HTTP ${res.status}`}.`, "error");
   cfg.activePreset = d.activePreset;
   renderPresets();
+  presetStatus(`✓ Switched to ${presetLabel(d.activePreset)}. The next question anyone asks uses it.`, "ok");
 }
 
 async function api(path, opts) {
