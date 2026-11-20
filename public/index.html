@@ -39,6 +39,9 @@
     <header><h1>Demo questions</h1><nav><button id="closeDemo">Close</button></nav></header>
     <div class="list" id="demoList"></div>
   </dialog>
+  <!-- Markdown rendering for answers; DOMPurify strips anything unsafe from model output. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

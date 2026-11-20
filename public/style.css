@@ -43,6 +43,23 @@ main { max-width: 980px; margin: 0 auto; padding: 16px 20px 0; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; color: #fff;
   font-weight: 600; font-size: 12px; cursor: help; }
 .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.85); }
+/* Formatted answers */
+.md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin: 0 0 10px; }
+.md h1, .md h2, .md h3, .md h4 { margin: 14px 0 6px; line-height: 1.3; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3, .md h4 { font-size: 15px; }
+.md ul, .md ol { padding-left: 22px; }
+.md li { margin: 2px 0; }
+.md code { font: 13px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; }
+.md pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+.md pre code { border: 0; padding: 0; background: none; white-space: pre; }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--border); padding: 4px 8px; }
+.md blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--muted); }
+.md a { color: #3b74d6; }
 .judge { margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--text); white-space: normal; }
 .typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }

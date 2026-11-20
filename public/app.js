@@ -9,6 +9,16 @@ function newSession() {
   $("log").innerHTML = ""; $("log").appendChild(emptyEl); renderTotals();
 }
 const emptyEl = $("empty");
+/** Renders an answer's markdown as sanitised HTML; falls back to plain text if the libraries didn't load. */
+function renderAnswer(el, text) {
+  if (window.marked && window.DOMPurify) {
+    el.classList.add("md");
+    el.innerHTML = DOMPurify.sanitize(marked.parse(text, { gfm: true, breaks: false }), { FORBID_TAGS: ["style", "img"] });
+    for (const a of el.querySelectorAll("a")) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+  } else {
+    el.textContent = text;
+  }
+}
 const usd = (n) => (n == null ? "–" : n < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(4)}`);
 
 async function api(path, opts) {
@@ -101,7 +111,7 @@ async function send(text) {
         const ev = /^event: (.*)$/m.exec(frame)?.[1];
         const data = JSON.parse(/^data: (.*)$/m.exec(frame)?.[1] ?? "{}");
         if (ev === "meta") { tag.textContent = ""; tag.appendChild(pill(data.model)); tag.append(" answering…"); }
-        else if (ev === "delta") { answer += data.text; textNode.textContent = answer; $("log").scrollTop = $("log").scrollHeight; }
+        else if (ev === "delta") { answer += data.text; renderAnswer(textNode, answer); $("log").scrollTop = $("log").scrollHeight; }
         else if (ev === "error") throw new Error(data.message);
         else if (ev === "done") {
           tag.textContent = "";
