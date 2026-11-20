@@ -1,9 +1,20 @@
 // Sends every demo question through each strategy via the running Worker (npm run dev)
 // and prints which model answered. Billable: ~15 calls per strategy plus judge calls.
-// Usage: node scripts/run-demo.mjs [strategyId ...]   (default: all strategies)
+// Usage: node scripts/run-demo.mjs [--preset thrifty|balanced|quality] [strategyId ...]
+//   (default: all strategies, whatever preset is active). --preset switches the active preset
+//   first, using ADMIN_PASSCODE from the environment (local default: the value in .dev.vars).
 const BASE = process.env.DEMO_URL ?? "http://127.0.0.1:8787";
+const args = process.argv.slice(2);
+const pi = args.indexOf("--preset");
+if (pi >= 0) {
+  const preset = args.splice(pi, 2)[1];
+  const res = await fetch(`${BASE}/api/admin/preset`, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ passcode: process.env.ADMIN_PASSCODE ?? "", preset }) });
+  if (!res.ok) { console.error("could not set preset:", await res.text()); process.exit(1); }
+  console.log(`preset: ${preset}`);
+}
 const cfg = await (await fetch(`${BASE}/api/config`)).json();
-const strategies = process.argv.slice(2).length ? process.argv.slice(2) : cfg.strategies.map((s) => s.id);
+const strategies = args.length ? args : cfg.strategies.map((s) => s.id);
 const label = (m) => cfg.models[m]?.label ?? m ?? "?";
 
 async function ask(strategy, text) {

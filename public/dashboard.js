@@ -4,6 +4,33 @@ const usd = (n) => (n == null ? "–" : n < 0.01 ? `$${Number(n).toFixed(5)}` : 
 const label = (m) => cfg.models[m]?.label ?? m ?? "error";
 const color = (m) => cfg.models[m]?.color ?? "#999";
 const stratLabel = (id) => cfg.strategies.find((s) => s.id === id)?.label.split(" (")[0] ?? id;
+const presetLabel = (id) => cfg.presets.find((p) => p.id === (id ?? "balanced"))?.label ?? id ?? "Balanced";
+
+function renderPresets() {
+  const box = $("presetButtons");
+  box.innerHTML = "";
+  for (const p of cfg.presets) {
+    const b = document.createElement("button");
+    b.textContent = p.label;
+    b.className = p.id === cfg.activePreset ? "primary" : "";
+    b.title = p.description;
+    b.onclick = () => setPreset(p.id);
+    box.appendChild(b);
+  }
+  $("presetDesc").textContent = cfg.presets.find((p) => p.id === cfg.activePreset)?.description ?? "";
+}
+
+async function setPreset(id) {
+  if (id === cfg.activePreset) return;
+  const passcode = prompt(`Admin passcode to switch everyone to "${presetLabel(id)}":`);
+  if (passcode == null) return;
+  const res = await api("/api/admin/preset", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ passcode, preset: id }) });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) return alert(d.error ?? "Could not change preset");
+  cfg.activePreset = d.activePreset;
+  renderPresets();
+}
 
 async function api(path, opts) {
   let res = await fetch(path, opts);
@@ -19,7 +46,9 @@ async function init() {
   cfg = await (await api("/api/config")).json();
   for (const [id, m] of Object.entries(cfg.models)) $("fModel").add(new Option(m.label, id));
   for (const s of cfg.strategies) $("fStrategy").add(new Option(s.label, s.id));
-  $("fModel").onchange = $("fStrategy").onchange = load;
+  for (const p of cfg.presets) $("fPreset").add(new Option(p.label, p.id));
+  $("fModel").onchange = $("fStrategy").onchange = $("fPreset").onchange = load;
+  renderPresets();
   const text = getComputedStyle(document.body).color;
   Chart.defaults.color = text;
   pie = new Chart($("pie"), { type: "doughnut", data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
@@ -35,6 +64,7 @@ async function load() {
   const q = new URLSearchParams();
   if ($("fModel").value) q.set("model", $("fModel").value);
   if ($("fStrategy").value) q.set("strategy", $("fStrategy").value);
+  if ($("fPreset").value) q.set("preset", $("fPreset").value);
   const d = await (await api(`/api/stats?${q}`)).json();
   const t = d.totals ?? {};
   $("kQueries").textContent = `${t.queries ?? 0}${t.queries && t.ok < t.queries ? ` (${t.queries - t.ok} failed)` : ""}`;
@@ -63,7 +93,7 @@ async function load() {
       new Date(r.ts).toLocaleTimeString(),
       r.turn ?? "–",
       r.prompt,
-      stratLabel(r.strategy),
+      `${stratLabel(r.strategy)} · ${presetLabel(r.preset)}`,
       shortReason(r.routing_reason),
       r.success ? label(r.model) : `Error: ${r.error ?? ""}`,
       r.latency_ms != null ? `${(r.latency_ms / 1000).toFixed(1)}s` : "–",
@@ -114,7 +144,7 @@ async function showDetail(id) {
     const h = document.createElement("h3"); h.textContent = title; body.appendChild(h);
     body.appendChild(typeof node === "string" ? Object.assign(document.createElement("p"), { textContent: node }) : node);
   };
-  const meta = [new Date(r.ts).toLocaleString(), stratLabel(r.strategy), r.turn ? `turn ${r.turn} of the conversation` : null,
+  const meta = [new Date(r.ts).toLocaleString(), `${stratLabel(r.strategy)} · ${presetLabel(r.preset)} preset`, r.turn ? `turn ${r.turn} of the conversation` : null,
     r.success ? label(r.model) : "failed", r.latency_ms != null ? `${(r.latency_ms / 1000).toFixed(1)}s` : null,
     r.input_tokens != null ? `${r.input_tokens} in / ${r.output_tokens} out tokens` : null,
     r.cost_usd != null ? `${usd(r.cost_usd)} (judge ${usd(r.router_cost_usd)})` : null].filter(Boolean).join(" · ");

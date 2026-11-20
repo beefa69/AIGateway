@@ -31,11 +31,23 @@ async function api(path, opts) {
   return res;
 }
 
+function showPreset(id) {
+  const p = cfg.presets?.find((x) => x.id === id);
+  if (!p) return;
+  $("presetChip").innerHTML = "";
+  $("presetChip").append("Preset: ", Object.assign(document.createElement("b"), { textContent: p.label }));
+  $("presetChip").title = `${p.description} (set by the admin on the dashboard)`;
+}
+
 async function init() {
   cfg = await (await api("/api/config")).json();
   const sel = $("strategy");
   for (const s of cfg.strategies) sel.add(new Option(s.label, s.id));
-  try { const saved = localStorage.getItem("strategy"); if (saved) sel.value = saved; } catch {}
+  try {
+    const saved = localStorage.getItem("strategy");
+    if (saved && cfg.strategies.some((s) => s.id === saved)) sel.value = saved; // ignore removed ones (e.g. Auto)
+  } catch {}
+  showPreset(cfg.activePreset);
   sel.title = cfg.strategies.find((s) => s.id === sel.value)?.description ?? "";
   sel.onchange = () => {
     sel.title = cfg.strategies.find((s) => s.id === sel.value)?.description ?? "";
@@ -122,6 +134,7 @@ async function send(text) {
           if (data.stopReason === "max_tokens") bits.push(`cut off at ${cfg.maxTokens} tokens`);
           if (data.empty) textNode.textContent = "(The model used its whole token budget thinking and returned no text.)";
           tag.append(bits.join(" · "));
+          if (data.preset) showPreset(data.preset);
           if (data.reason) {
             const judge = document.createElement("div");
             judge.className = "judge";

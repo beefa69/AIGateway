@@ -35,13 +35,41 @@
     {
       "id": "switchyard/tiered",
       "label": "Tiered classifier (Haiku / Sonnet / Opus)",
-      "description": "Haiku judges each question and picks one of three models (llm_classifier, custom mode)."
+      "description": "Haiku judges each question and picks one of three models (llm_classifier, custom mode).",
+      "routes": {
+        "thrifty": "switchyard/tiered-thrifty",
+        "balanced": "switchyard/tiered",
+        "quality": "switchyard/tiered-quality"
+      }
     },
     {
       "id": "switchyard/task",
       "label": "Task classifier (Haiku / Opus)",
-      "description": "Haiku scores how likely the cheap model is to solve it; below the threshold it goes to Opus (llm_classifier, capability mode)."
+      "description": "Haiku scores how likely the cheap model is to solve it; below the threshold it goes to Opus (llm_classifier, capability mode).",
+      "routes": {
+        "thrifty": "switchyard/task-thrifty",
+        "balanced": "switchyard/task",
+        "quality": "switchyard/task-quality"
+      }
     }
   ],
-  "_strategiesNote": "switchyard/auto is still defined in switchyard/routes.toml but left out of the UI: it routes on agent tool signals, not on the question, so plain chat always stays on Haiku."
+  "_strategiesNote": "switchyard/auto is still defined in switchyard/routes.toml but left out of the UI: it routes on agent tool signals, not on the question, so plain chat always stays on Haiku.",
+  "presets": [
+    {
+      "id": "thrifty",
+      "label": "Thrifty",
+      "description": "Leans cheap: Haiku by default, Opus only for clearly hard reasoning. Task: Opus below 50% solve chance."
+    },
+    {
+      "id": "balanced",
+      "label": "Balanced",
+      "description": "Cheapest model that answers well. Task: Opus below 85% solve chance."
+    },
+    {
+      "id": "quality",
+      "label": "Quality first",
+      "description": "Leans capable: Sonnet for explanations, Opus for anything non-trivial. Task: Opus below 97% solve chance."
+    }
+  ],
+  "defaultPreset": "balanced"
 }

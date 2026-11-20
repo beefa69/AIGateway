@@ -13,9 +13,17 @@
     <nav><a href="/">Chat</a><a href="/dashboard" class="active">Dashboard</a></nav>
   </header>
   <main>
+    <div class="card admin">
+      <div>
+        <h2>Routing preset <span class="hint">· admin · applies to everyone, takes effect on the next question</span></h2>
+        <div class="presets" id="presetButtons"></div>
+        <p class="hint" id="presetDesc"></p>
+      </div>
+    </div>
     <div class="filters">
       <select id="fModel"><option value="">All models</option></select>
       <select id="fStrategy"><option value="">All strategies</option></select>
+      <select id="fPreset"><option value="">All presets</option></select>
       <span class="spacer"></span>
       <label><input type="checkbox" id="auto" checked /> Auto-refresh</label>
       <a class="button" href="/api/export.csv" download>Download log (CSV)</a>
@@ -35,7 +43,7 @@
       <h2>Recent queries <span class="hint">· click a row for the full question, judge decision and answer</span></h2>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Time</th><th class="num">Turn</th><th>Question</th><th>Strategy</th><th>Judge decision</th><th>Model</th><th class="num">Latency</th><th class="num">Tokens in / out</th><th class="num">Cost</th></tr></thead>
+          <thead><tr><th>Time</th><th class="num">Turn</th><th>Question</th><th>Strategy · preset</th><th>Judge decision</th><th>Model</th><th class="num">Latency</th><th class="num">Tokens in / out</th><th class="num">Cost</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>

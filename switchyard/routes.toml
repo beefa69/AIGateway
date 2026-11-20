@@ -157,3 +157,199 @@ any = ["haiku", "sonnet", "opus"]
 [routes.tiered.policy]
 type = "target_selector"
 selector = "/decision/target"
+
+# ================================================================ cost/quality presets
+# The admin control on the dashboard picks one preset for everyone; the Worker maps
+# (strategy, preset) to one of these route ids. "balanced" uses the routes above.
+
+# Task preset "thrifty": Opus only when Haiku's solve chance is below 50% (55/60% when unsure).
+[routes.task_thrifty]
+id = "switchyard/task-thrifty"
+type = "llm_classifier"
+mode = "capability"
+classifier_target = "judge"
+weak_target = "haiku"
+strong_target = "opus"
+base_threshold = 0.5
+threshold_step = 0.05
+classify_trigger = "every_request"
+max_output_tokens = 2048
+judge_deadline_ms = 20000
+prompt = """
+You are a router's judge for a chat assistant. Estimate p_solve: the probability that
+Claude Haiku 5.5 (a fast, low-cost model) answers the LATEST user message correctly and
+completely, with no meaningful error a careful expert would catch.
+
+Judge the LATEST user message only. Earlier messages, including the conversation's opening
+message, are context: use them only when the latest message depends on them (for example
+"explain that more simply"). A hard earlier question does not make a simple new one hard.
+
+Capability card. The rule ids are opaque labels; pick the one that best fits the crux.
+- SUP-1 [supported]: a single well-known fact, definition, date, unit or name.
+- SUP-2 [supported]: a short rewrite, translation, spelling or grammar fix, or reformatting.
+- SUP-3 [supported]: a standard explanation, summary or comparison of a well-documented topic.
+- SUP-4 [supported]: routine code with a clear specification and a well-known approach.
+- SUP-5 [supported]: a follow-up that only asks to shorten, simplify or restate an earlier answer.
+- UNC-1 [uncertain]: an ambiguous request, or one mixing several sub-questions that must all be right.
+- UNC-2 [uncertain]: specialised or niche knowledge where plausible-sounding errors are likely.
+- LIM-1 [unsupported]: multi-step maths, logic or constraint puzzles where one slip breaks the answer,
+  including trick questions designed to provoke an intuitive wrong answer.
+- LIM-2 [unsupported]: subtle debugging, diagnosing a system from symptoms, or design under failure
+  modes and trade-offs, where a shallow answer looks right but misses the real issue.
+Use primary_rule=none and capability_boundary=unmatched only when no rule applies.
+
+Procedure: state the crux (the hardest thing the latest message needs), pick the rule, then estimate
+p_solve last. Easy factual and rewrite questions should usually score above 0.95. Reserve scores
+below 0.7 for questions where a fast model would often get something materially wrong.
+
+Return exactly one JSON object matching the response schema supplied with the request.
+"""
+
+# Task preset "quality": Opus unless Haiku is near-certain: below 97% (98.5/100% when unsure).
+[routes.task_quality]
+id = "switchyard/task-quality"
+type = "llm_classifier"
+mode = "capability"
+classifier_target = "judge"
+weak_target = "haiku"
+strong_target = "opus"
+base_threshold = 0.97
+threshold_step = 0.015
+classify_trigger = "every_request"
+max_output_tokens = 2048
+judge_deadline_ms = 20000
+prompt = """
+You are a router's judge for a chat assistant. Estimate p_solve: the probability that
+Claude Haiku 5.5 (a fast, low-cost model) answers the LATEST user message correctly and
+completely, with no meaningful error a careful expert would catch.
+
+Judge the LATEST user message only. Earlier messages, including the conversation's opening
+message, are context: use them only when the latest message depends on them (for example
+"explain that more simply"). A hard earlier question does not make a simple new one hard.
+
+Capability card. The rule ids are opaque labels; pick the one that best fits the crux.
+- SUP-1 [supported]: a single well-known fact, definition, date, unit or name.
+- SUP-2 [supported]: a short rewrite, translation, spelling or grammar fix, or reformatting.
+- SUP-3 [supported]: a standard explanation, summary or comparison of a well-documented topic.
+- SUP-4 [supported]: routine code with a clear specification and a well-known approach.
+- SUP-5 [supported]: a follow-up that only asks to shorten, simplify or restate an earlier answer.
+- UNC-1 [uncertain]: an ambiguous request, or one mixing several sub-questions that must all be right.
+- UNC-2 [uncertain]: specialised or niche knowledge where plausible-sounding errors are likely.
+- LIM-1 [unsupported]: multi-step maths, logic or constraint puzzles where one slip breaks the answer,
+  including trick questions designed to provoke an intuitive wrong answer.
+- LIM-2 [unsupported]: subtle debugging, diagnosing a system from symptoms, or design under failure
+  modes and trade-offs, where a shallow answer looks right but misses the real issue.
+Use primary_rule=none and capability_boundary=unmatched only when no rule applies.
+
+Procedure: state the crux (the hardest thing the latest message needs), pick the rule, then estimate
+p_solve last. Easy factual and rewrite questions should usually score above 0.95. Reserve scores
+below 0.7 for questions where a fast model would often get something materially wrong.
+
+Return exactly one JSON object matching the response schema supplied with the request.
+"""
+
+# Tiered preset "thrifty": leans cheap; Haiku is the default, Opus only for clearly hard reasoning.
+[routes.tiered_thrifty]
+id = "switchyard/tiered-thrifty"
+type = "llm_classifier"
+mode = "custom"
+default_target = "sonnet"
+classify_trigger = "every_request"
+max_output_tokens = 2048
+judge_deadline_ms = 20000
+prompt = """
+You route chat requests to one of three Claude models. Judge the LATEST user message
+and pick the CHEAPEST model that gives an acceptable answer; when unsure, choose the cheaper model. Earlier messages, including the
+conversation's opening message, are context only: use them only when the latest message
+depends on them (for example "explain that more simply"). A hard earlier question does not
+make a simple new one hard.
+
+- "haiku": the default. Facts, definitions, rewrites, translations, formatting, and standard
+  explanations or summaries of well-known topics, even multi-paragraph ones.
+- "sonnet": only when the answer needs real nuance or judgement across several factors, or
+  non-trivial code, and a fast model would probably produce something noticeably weaker.
+- "opus": only for hard multi-step reasoning, maths or logic puzzles, or deep debugging and
+  system design where both cheaper models would likely get it wrong.
+
+Return JSON matching the response schema supplied with the request.
+"""
+response_schema = '''
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "object",
+      "properties": {
+        "target": { "type": "string", "enum": ["haiku", "sonnet", "opus"] }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["decision"],
+  "additionalProperties": false
+}
+'''
+
+[routes.tiered_thrifty.models]
+judge = ["judge"]
+haiku = ["haiku"]
+sonnet = ["sonnet"]
+opus = ["opus"]
+any = ["haiku", "sonnet", "opus"]
+
+[routes.tiered_thrifty.policy]
+type = "target_selector"
+selector = "/decision/target"
+
+# Tiered preset "quality": leans capable; Sonnet for explanations, Opus for anything non-trivial.
+[routes.tiered_quality]
+id = "switchyard/tiered-quality"
+type = "llm_classifier"
+mode = "custom"
+default_target = "sonnet"
+classify_trigger = "every_request"
+max_output_tokens = 2048
+judge_deadline_ms = 20000
+prompt = """
+You route chat requests to one of three Claude models. Judge the LATEST user message
+and pick the model that gives the BEST answer; when unsure, choose the more capable model. Earlier messages, including the
+conversation's opening message, are context only: use them only when the latest message
+depends on them (for example "explain that more simply"). A hard earlier question does not
+make a simple new one hard.
+
+- "haiku": only for a single trivial fact, a one-line rewrite, translation or spelling fix.
+- "sonnet": explanations, summaries and comparisons of well-documented topics.
+- "opus": anything involving reasoning, calculation, code (writing or debugging), design,
+  trade-offs, multi-part questions, or any answer where a subtle mistake would matter.
+
+Return JSON matching the response schema supplied with the request.
+"""
+response_schema = '''
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "object",
+      "properties": {
+        "target": { "type": "string", "enum": ["haiku", "sonnet", "opus"] }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["decision"],
+  "additionalProperties": false
+}
+'''
+
+[routes.tiered_quality.models]
+judge = ["judge"]
+haiku = ["haiku"]
+sonnet = ["sonnet"]
+opus = ["opus"]
+any = ["haiku", "sonnet", "opus"]
+
+[routes.tiered_quality.policy]
+type = "target_selector"
+selector = "/decision/target"

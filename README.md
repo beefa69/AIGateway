@@ -113,6 +113,39 @@ Verified by testing, not assumed:
   the dashboard. The same response's `targets.judge` token counts are priced with `models.json` to get the
   judge's cost.
 
+## Cost/quality presets (admin)
+
+The dashboard's **Routing preset** control switches everyone between three presets. It asks for
+`ADMIN_PASSCODE`, the change applies from the next question, and every logged request records its preset.
+Switchyard can't reload its config while running, so each preset is its own route in `routes.toml`.
+The Worker maps (strategy, preset) to a route via `strategies[].routes` in `models.json`, which makes
+switching instant with no restart.
+
+| Preset | Tiered judge guidance | Task threshold (when unsure) |
+|---|---|---|
+| Thrifty | Cheapest acceptable model; Haiku is the default; Opus only for clearly hard reasoning | Opus below 50% (55 / 60%) |
+| Balanced (default) | Cheapest model that answers well | Opus below 85% (90 / 95%) |
+| Quality first | Best answer; Sonnet for explanations, Opus for reasoning, code or anything non-trivial | Opus below 97% (98.5 / 100%) |
+
+Measured on the 15 demo questions (2026-11-20):
+
+| Preset | Tiered: Haiku / Sonnet / Opus | Tiered spend | Task: Haiku / Opus | Task spend |
+|---|---|---|---|---|
+| Thrifty | 9 / 2 / 4 | $0.088 | 11 / 4 | $0.079 |
+| Balanced | 5 / 5 / 5 | $0.114 | 10 / 5 | $0.096 |
+| Quality first | 5 / 4 / 6 | $0.129 | 5 / 10 | $0.144 |
+
+- **Thrifty** moves four medium questions to Haiku and the Python dedupe bug to Sonnet (Tiered), and keeps
+  the dedupe bug on Haiku (Task).
+- **Quality first** sends the word-count function to Opus (Tiered), and sends every medium question to Opus
+  (Task). Easy questions stay on Haiku under every preset.
+
+A good live sequence: run the same three demo questions on Thrifty, then on Quality first, and show the
+model split and spend change on the dashboard (filter by preset).
+
+`npm run demo:run -- --preset quality` switches the preset (using `ADMIN_PASSCODE` from the environment)
+before running the question set.
+
 ## What gets logged
 
 Every request is one row in D1 (`requests`), local or hosted:
@@ -120,7 +153,7 @@ Every request is one row in D1 (`requests`), local or hosted:
 | Column | What |
 |---|---|
 | `ts`, `session_id`, `turn` | When, which browser session, and which question of the conversation (1 = opening) |
-| `strategy`, `prompt` | Route used, and the question (first 500 chars) |
+| `strategy`, `preset`, `prompt` | Strategy and preset used, and the question (first 500 chars) |
 | `routing_reason` | The judge's decision, e.g. "Haiku judge: 55% chance Haiku solves it (< 90% needed) → Opus" |
 | `model`, `response` | Model that answered, and its answer (first 8,000 chars) |
 | `input_tokens`, `output_tokens`, `latency_ms` | Input includes cached tokens |

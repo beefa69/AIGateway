@@ -46,6 +46,20 @@ type ModelInfo = {
 const MODELS = config.models as Record<string, ModelInfo>;
 const STRATEGY_IDS = new Set(config.strategies.map((s) => s.id));
 const BASELINE = MODELS[config.baselineModel];
+const PRESET_IDS = new Set(config.presets.map((p) => p.id));
+
+/** The Switchyard route that serves a strategy under a preset (see models.json → strategies[].routes). */
+function routeFor(strategy: string, preset: string): string {
+  const s = config.strategies.find((x) => x.id === strategy) as { routes?: Record<string, string> } | undefined;
+  return s?.routes?.[preset] ?? strategy;
+}
+
+/** The admin-selected preset, stored in D1 so it applies to every viewer of the hosted site. */
+async function activePreset(db: D1Database): Promise<string> {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'preset'").first<{ value: string }>()
+    .catch(() => null);
+  return row && PRESET_IDS.has(row.value) ? row.value : config.defaultPreset;
+}
 
 /** Token usage split the way Anthropic bills it. `input` is uncached input only. */
 type Usage = { input: number; cacheWrite: number; cacheRead: number; output: number };
@@ -87,8 +101,10 @@ app.post("/api/login", async (c) => {
 });
 
 // ------------------------------------------------------------ config for the browser (no secrets)
-app.get("/api/config", (c) =>
+app.get("/api/config", async (c) =>
   c.json({
+    activePreset: await activePreset(c.env.DB),
+    presets: config.presets,
     maxTokens: config.maxTokens,
     baselineModel: config.baselineModel,
     models: MODELS,
@@ -145,6 +161,8 @@ app.post("/api/chat", async (c) => {
   const started = Date.now();
   const prompt = messages[messages.length - 1].content.slice(0, 500);
   const turn = messages.filter((m) => m.role === "user").length; // 1 = opening question
+  const preset = await activePreset(c.env.DB);
+  const route = routeFor(strategy, preset);
 
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -159,12 +177,12 @@ app.post("/api/chat", async (c) => {
   }) =>
     c.env.DB.prepare(
       `INSERT INTO requests (id, ts, session_id, strategy, prompt, model, routing_reason, input_tokens, output_tokens,
-        latency_ms, cost_usd, router_cost_usd, baseline_usd, success, error, response, turn)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        latency_ms, cost_usd, router_cost_usd, baseline_usd, success, error, response, turn, preset)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
       .bind(id, started, sessionId, strategy, prompt, row.model ?? null, row.reason ?? null, row.inTok ?? null,
         row.outTok ?? null, row.latency, row.cost ?? null, row.routerCost ?? null, row.baseline ?? null,
-        row.success ? 1 : 0, row.error ?? null, row.response ? row.response.slice(0, 8000) : null, turn)
+        row.success ? 1 : 0, row.error ?? null, row.response ? row.response.slice(0, 8000) : null, turn, preset)
       .run();
 
   const run = async () => {
@@ -180,7 +198,7 @@ app.post("/api/chat", async (c) => {
           "x-switchyard-session-id": id,
           "x-switchyard-origin": "switchyard-router-demo",
         },
-        body: JSON.stringify({ model: strategy, max_tokens: config.maxTokens, stream: true, messages }),
+        body: JSON.stringify({ model: route, max_tokens: config.maxTokens, stream: true, messages }),
       });
 
       model = upstream.headers.get("x-model-router-selected-model");
@@ -241,7 +259,7 @@ app.post("/api/chat", async (c) => {
       const inTok = totalInput(usage), outTok = usage.output;
       await log({ model, reason, inTok, outTok, latency, cost: actual, routerCost, baseline, success: true, response: answer });
       await send("done", { id, model, reason, inputTokens: inTok, cachedInputTokens: usage.cacheRead, outputTokens: outTok, latencyMs: latency,
-        costUsd: actual, answerCostUsd: answerCost, routerCostUsd: routerCost, baselineUsd: baseline, stopReason,
+        costUsd: actual, preset, answerCostUsd: answerCost, routerCostUsd: routerCost, baselineUsd: baseline, stopReason,
         empty: !gotText });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -317,6 +335,8 @@ app.get("/api/stats", async (c) => {
   const strategy = c.req.query("strategy");
   if (model) { where.push("model = ?"); binds.push(model); }
   if (strategy) { where.push("strategy = ?"); binds.push(strategy); }
+  const presetQ = c.req.query("preset");
+  if (presetQ) { where.push("COALESCE(preset, 'balanced') = ?"); binds.push(presetQ); }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const wOk = `WHERE success = 1${where.length ? " AND " + where.join(" AND ") : ""}`;
 
@@ -325,10 +345,27 @@ app.get("/api/stats", async (c) => {
                 COALESCE(SUM(baseline_usd),0) AS baseline FROM requests ${w}`).bind(...binds).first(),
     db.prepare(`SELECT model, COUNT(*) AS n, AVG(latency_ms) AS avg_latency, SUM(cost_usd) AS spend
                 FROM requests ${wOk} GROUP BY model ORDER BY n DESC`).bind(...binds).all(),
-    db.prepare(`SELECT id, ts, session_id, turn, strategy, prompt, model, routing_reason, input_tokens, output_tokens,
+    db.prepare(`SELECT id, ts, session_id, turn, strategy, preset, prompt, model, routing_reason, input_tokens, output_tokens,
                 latency_ms, cost_usd, baseline_usd, success, error FROM requests ${w} ORDER BY ts DESC LIMIT 100`).bind(...binds).all(),
   ]);
   return c.json({ totals, perModel: perModel.results, recent: recent.results });
+});
+
+/** Admin: switch the cost/quality preset for everyone. Needs ADMIN_PASSCODE. */
+app.post("/api/admin/preset", async (c) => {
+  const admin = c.env.ADMIN_PASSCODE;
+  const { passcode, preset } = await c.req.json<{ passcode?: string; preset?: string }>()
+    .catch(() => ({ passcode: "", preset: "" }));
+  if (!admin) return c.json({ error: "admin disabled: set ADMIN_PASSCODE" }, 403);
+  if (!safeEqual(String(passcode ?? ""), admin)) {
+    await new Promise((r) => setTimeout(r, 1000));
+    return c.json({ error: "wrong admin passcode" }, 403);
+  }
+  if (!PRESET_IDS.has(String(preset))) return c.json({ error: "unknown preset" }, 400);
+  await c.env.DB.prepare(
+    "INSERT INTO settings (key, value, updated_ts) VALUES ('preset', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_ts = excluded.updated_ts",
+  ).bind(preset, Date.now()).run();
+  return c.json({ ok: true, activePreset: preset });
 });
 
 /** One logged request in full: question, judge decision and answer. */
@@ -340,10 +377,10 @@ app.get("/api/requests/:id", async (c) => {
 /** The whole log as CSV (questions, judge decisions, models, answers, tokens, costs). */
 app.get("/api/export.csv", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT ts, session_id, turn, strategy, prompt, routing_reason, model, response, input_tokens, output_tokens,
+    `SELECT ts, session_id, turn, strategy, preset, prompt, routing_reason, model, response, input_tokens, output_tokens,
             latency_ms, cost_usd, router_cost_usd, baseline_usd, success, error FROM requests ORDER BY ts`,
   ).all<Record<string, unknown>>();
-  const cols = ["time_utc", "session_id", "turn", "strategy", "question", "judge_decision", "model", "answer",
+  const cols = ["time_utc", "session_id", "turn", "strategy", "preset", "question", "judge_decision", "model", "answer",
     "input_tokens", "output_tokens", "latency_ms", "cost_usd", "judge_cost_usd", "opus_baseline_usd", "success", "error"];
   const esc = (v: unknown) => {
     if (v == null) return "";
@@ -353,7 +390,7 @@ app.get("/api/export.csv", async (c) => {
   };
   const lines = [cols.join(",")];
   for (const r of results) {
-    lines.push([new Date(Number(r.ts)).toISOString(), r.session_id, r.turn, r.strategy, r.prompt, r.routing_reason,
+    lines.push([new Date(Number(r.ts)).toISOString(), r.session_id, r.turn, r.strategy, r.preset ?? "balanced", r.prompt, r.routing_reason,
       r.model, r.response, r.input_tokens, r.output_tokens, r.latency_ms, r.cost_usd, r.router_cost_usd,
       r.baseline_usd, r.success, r.error].map(esc).join(","));
   }
