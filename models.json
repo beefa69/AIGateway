@@ -1,15 +1,47 @@
 {
-  "_source": "https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-20). USD per million tokens, standard (global) rates. Haiku 5.5 rates apply to prompts up to 100K tokens.",
+  "_source": "https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-11-20). USD per million tokens (cache writes = 5-minute rate), standard (global) rates. Haiku 5.5 rates apply to prompts up to 100K tokens.",
   "maxTokens": 4096,
   "baselineModel": "claude-opus-5-5",
   "models": {
-    "claude-haiku-5-5":  { "label": "Haiku 5.5",  "tier": "cheap / fast", "color": "#2e9e6a", "inputPerMTok": 0.10, "outputPerMTok": 0.50 },
-    "claude-sonnet-5-5": { "label": "Sonnet 5.5", "tier": "mid",          "color": "#3b74d6", "inputPerMTok": 2.00, "outputPerMTok": 10.00 },
-    "claude-opus-5-5":   { "label": "Opus 5.5",   "tier": "frontier",     "color": "#b4529c", "inputPerMTok": 4.00, "outputPerMTok": 20.00 }
+    "claude-haiku-5-5": {
+      "label": "Haiku 5.5",
+      "tier": "cheap / fast",
+      "color": "#2e9e6a",
+      "inputPerMTok": 0.1,
+      "outputPerMTok": 0.5,
+      "cacheWritePerMTok": 0.125,
+      "cacheReadPerMTok": 0.01
+    },
+    "claude-sonnet-5-5": {
+      "label": "Sonnet 5.5",
+      "tier": "mid",
+      "color": "#3b74d6",
+      "inputPerMTok": 2,
+      "outputPerMTok": 10,
+      "cacheWritePerMTok": 2.5,
+      "cacheReadPerMTok": 0.1
+    },
+    "claude-opus-5-5": {
+      "label": "Opus 5.5",
+      "tier": "frontier",
+      "color": "#b4529c",
+      "inputPerMTok": 4,
+      "outputPerMTok": 20,
+      "cacheWritePerMTok": 5,
+      "cacheReadPerMTok": 0.2
+    }
   },
   "strategies": [
-    { "id": "switchyard/tiered", "label": "Tiered classifier (Haiku / Sonnet / Opus)", "description": "Haiku judges each question and picks one of three models (llm_classifier, custom mode)." },
-    { "id": "switchyard/task",   "label": "Task classifier (Haiku / Opus)",           "description": "Haiku scores how likely the cheap model is to solve it; below the threshold it goes to Opus (llm_classifier, capability mode)." }
+    {
+      "id": "switchyard/tiered",
+      "label": "Tiered classifier (Haiku / Sonnet / Opus)",
+      "description": "Haiku judges each question and picks one of three models (llm_classifier, custom mode)."
+    },
+    {
+      "id": "switchyard/task",
+      "label": "Task classifier (Haiku / Opus)",
+      "description": "Haiku scores how likely the cheap model is to solve it; below the threshold it goes to Opus (llm_classifier, capability mode)."
+    }
   ],
   "_strategiesNote": "switchyard/auto is still defined in switchyard/routes.toml but left out of the UI: it routes on agent tool signals, not on the question, so plain chat always stays on Haiku."
 }

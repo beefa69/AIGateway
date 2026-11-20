@@ -56,11 +56,16 @@ async function load() {
   rows.innerHTML = "";
   for (const r of d.recent ?? []) {
     const tr = document.createElement("tr");
+    tr.className = "clickable";
+    tr.title = "Click to see the question, the judge's decision and the full answer";
+    tr.onclick = () => showDetail(r.id);
     const cells = [
       new Date(r.ts).toLocaleTimeString(),
+      r.turn ?? "–",
       r.prompt,
-      r.success ? label(r.model) : `Error: ${r.error ?? ""}`,
       stratLabel(r.strategy),
+      shortReason(r.routing_reason),
+      r.success ? label(r.model) : `Error: ${r.error ?? ""}`,
       r.latency_ms != null ? `${(r.latency_ms / 1000).toFixed(1)}s` : "–",
       r.input_tokens != null ? `${r.input_tokens} / ${r.output_tokens}` : "–",
       usd(r.cost_usd),
@@ -68,17 +73,60 @@ async function load() {
     cells.forEach((v, i) => {
       const td = document.createElement("td");
       td.textContent = v;
-      if (i === 1) { td.className = "snippet"; td.title = r.prompt; }
-      if (i === 2 && r.success) {
+      if (i === 1) td.className = "num";
+      if (i === 2) { td.className = "snippet"; td.title = r.prompt; }
+      if (i === 4) { td.className = "decision"; td.title = r.routing_reason ?? ""; }
+      if (i === 5 && r.success) {
         const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = color(r.model);
-        td.prepend(dot); td.title = r.routing_reason ? `Routing reason: ${r.routing_reason}` : "";
+        td.prepend(dot);
       }
-      if (i >= 4) td.className = "num";
+      if (i >= 6) td.className = "num";
       tr.appendChild(td);
     });
     rows.appendChild(tr);
   }
 }
+
+/** "Haiku judge: 55% chance Haiku solves it (< 90% needed) → Opus" → "55% < 90% → Opus" */
+function shortReason(r) {
+  if (!r) return "–";
+  const m = /(\d+)% chance Haiku solves it \(([<≥]) (\d+)% needed\) → (\w+)/.exec(r);
+  if (m) return `${m[1]}% ${m[2]} ${m[3]}% → ${m[4]}`;
+  const p = /picked (\w+)/.exec(r) ?? /chose "(\w+)"/.exec(r);
+  return p ? `picked ${p[1]}` : r.slice(0, 40);
+}
+
+function md(text) {
+  const el = document.createElement("div");
+  el.className = "md";
+  if (window.marked && window.DOMPurify) el.innerHTML = DOMPurify.sanitize(marked.parse(text ?? ""), { FORBID_TAGS: ["style", "img"] });
+  else { el.textContent = text ?? ""; el.style.whiteSpace = "pre-wrap"; }
+  return el;
+}
+
+async function showDetail(id) {
+  const res = await api(`/api/requests/${encodeURIComponent(id)}`);
+  if (!res.ok) return;
+  const r = await res.json();
+  const body = $("detailBody");
+  body.innerHTML = "";
+  const add = (title, node) => {
+    const h = document.createElement("h3"); h.textContent = title; body.appendChild(h);
+    body.appendChild(typeof node === "string" ? Object.assign(document.createElement("p"), { textContent: node }) : node);
+  };
+  const meta = [new Date(r.ts).toLocaleString(), stratLabel(r.strategy), r.turn ? `turn ${r.turn} of the conversation` : null,
+    r.success ? label(r.model) : "failed", r.latency_ms != null ? `${(r.latency_ms / 1000).toFixed(1)}s` : null,
+    r.input_tokens != null ? `${r.input_tokens} in / ${r.output_tokens} out tokens` : null,
+    r.cost_usd != null ? `${usd(r.cost_usd)} (judge ${usd(r.router_cost_usd)})` : null].filter(Boolean).join(" · ");
+  add("Request", meta);
+  add("Question", r.prompt);
+  add("Judge decision", r.routing_reason ?? "No judge decision recorded for this strategy.");
+  add(r.success ? `Answer from ${label(r.model)}` : "Error", r.success ? md(r.response ?? "(answer not logged; older request)") : (r.error ?? ""));
+  $("detail").showModal();
+}
+
+$("closeDetail").onclick = () => $("detail").close();
+$("detail").onclick = (e) => { if (e.target === $("detail")) $("detail").close(); };
 
 $("reset").onclick = async () => {
   const passcode = prompt("Admin passcode to delete all logged requests:");

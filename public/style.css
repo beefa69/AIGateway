@@ -90,6 +90,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .filters .spacer { flex: 1; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--bg); }
+td.decision { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+a.button { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px;
+  color: inherit; text-decoration: none; }
+a.button:hover { border-color: var(--muted); }
+.detail p { margin: 0 0 6px; white-space: pre-wrap; }
+.detail h3:first-child { margin-top: 4px; }
 .snippet { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) {
   .grid { grid-template-columns: 1fr 1fr; } .two { grid-template-columns: 1fr; }

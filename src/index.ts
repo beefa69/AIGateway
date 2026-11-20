@@ -39,14 +39,22 @@ function safeEqual(a: string, b: string): boolean {
 /** The cookie holds a hash of the passcode, never the passcode itself. */
 const passToken = (pass: string) => sha256Hex(`switchyard-demo:v1:${pass}`);
 
-type ModelInfo = { label: string; color: string; tier: string; inputPerMTok: number; outputPerMTok: number };
+type ModelInfo = {
+  label: string; color: string; tier: string;
+  inputPerMTok: number; outputPerMTok: number; cacheWritePerMTok: number; cacheReadPerMTok: number;
+};
 const MODELS = config.models as Record<string, ModelInfo>;
 const STRATEGY_IDS = new Set(config.strategies.map((s) => s.id));
 const BASELINE = MODELS[config.baselineModel];
 
-function cost(model: ModelInfo | undefined, inTok: number, outTok: number): number | null {
+/** Token usage split the way Anthropic bills it. `input` is uncached input only. */
+type Usage = { input: number; cacheWrite: number; cacheRead: number; output: number };
+const totalInput = (u: Usage) => u.input + u.cacheWrite + u.cacheRead;
+
+function cost(model: ModelInfo | undefined, u: Usage): number | null {
   if (!model) return null;
-  return (inTok * model.inputPerMTok + outTok * model.outputPerMTok) / 1_000_000;
+  return (u.input * model.inputPerMTok + u.cacheWrite * model.cacheWritePerMTok +
+    u.cacheRead * model.cacheReadPerMTok + u.output * model.outputPerMTok) / 1_000_000;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -136,6 +144,7 @@ app.post("/api/chat", async (c) => {
   const id = crypto.randomUUID();
   const started = Date.now();
   const prompt = messages[messages.length - 1].content.slice(0, 500);
+  const turn = messages.filter((m) => m.role === "user").length; // 1 = opening question
 
   const { readable, writable } = new TransformStream();
   const writer = writable.getWriter();
@@ -146,15 +155,16 @@ app.post("/api/chat", async (c) => {
   const log = (row: {
     model?: string | null; reason?: string | null; inTok?: number; outTok?: number;
     latency: number; cost?: number | null; routerCost?: number | null; baseline?: number | null;
-    success: boolean; error?: string | null;
+    success: boolean; error?: string | null; response?: string;
   }) =>
     c.env.DB.prepare(
       `INSERT INTO requests (id, ts, session_id, strategy, prompt, model, routing_reason, input_tokens, output_tokens,
-        latency_ms, cost_usd, router_cost_usd, baseline_usd, success, error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        latency_ms, cost_usd, router_cost_usd, baseline_usd, success, error, response, turn)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
       .bind(id, started, sessionId, strategy, prompt, row.model ?? null, row.reason ?? null, row.inTok ?? null,
         row.outTok ?? null, row.latency, row.cost ?? null, row.routerCost ?? null, row.baseline ?? null,
-        row.success ? 1 : 0, row.error ?? null)
+        row.success ? 1 : 0, row.error ?? null, row.response ? row.response.slice(0, 8000) : null, turn)
       .run();
 
   const run = async () => {
@@ -180,7 +190,17 @@ app.post("/api/chat", async (c) => {
       }
       if (model) await send("meta", { model });
 
-      let inTok = 0, outTok = 0, buf = "", stopReason: string | null = null, gotText = false;
+      const usage: Usage = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+      // message_start carries the input split; message_delta repeats some fields cumulatively.
+      // Take each field when present rather than overwriting the total with uncached input only.
+      const takeUsage = (u: any) => {
+        if (!u) return;
+        if (u.input_tokens != null) usage.input = u.input_tokens;
+        if (u.cache_creation_input_tokens != null) usage.cacheWrite = u.cache_creation_input_tokens;
+        if (u.cache_read_input_tokens != null) usage.cacheRead = u.cache_read_input_tokens;
+        if (u.output_tokens != null) usage.output = u.output_tokens;
+      };
+      let buf = "", stopReason: string | null = null, gotText = false, answer = "";
       const reader = upstream.body.pipeThrough(new TextDecoderStream()).getReader();
       for (;;) {
         const { value, done } = await reader.read();
@@ -195,19 +215,17 @@ app.post("/api/chat", async (c) => {
           let ev: any;
           try { ev = JSON.parse(dataLine.slice(5).trim()); } catch { continue; }
           if (ev.type === "message_start") {
-            const u = ev.message?.usage ?? {};
-            inTok = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-            outTok = u.output_tokens ?? 0;
+            takeUsage(ev.message?.usage);
             if (ev.message?.model && ev.message.model !== model) {
               model = ev.message.model;
               await send("meta", { model });
             }
           } else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
             if (ev.delta.text) gotText = true;
+            answer += ev.delta.text ?? "";
             await send("delta", { text: ev.delta.text });
           } else if (ev.type === "message_delta") {
-            if (ev.usage?.output_tokens != null) outTok = ev.usage.output_tokens;
-            if (ev.usage?.input_tokens) inTok = ev.usage.input_tokens;
+            takeUsage(ev.usage);
             stopReason = ev.delta?.stop_reason ?? stopReason;
           } else if (ev.type === "error") {
             throw new Error(ev.error?.message ?? "upstream stream error");
@@ -217,11 +235,12 @@ app.post("/api/chat", async (c) => {
 
       const latency = Date.now() - started;
       const { reason, routerCost } = await fetchRouting(c.env, id);
-      const answerCost = cost(model ? MODELS[model] : undefined, inTok, outTok);
+      const answerCost = cost(model ? MODELS[model] : undefined, usage);
       const actual = answerCost == null ? null : answerCost + (routerCost ?? 0);
-      const baseline = cost(BASELINE, inTok, outTok); // Opus-only would need no judge
-      await log({ model, reason, inTok, outTok, latency, cost: actual, routerCost, baseline, success: true });
-      await send("done", { id, model, reason, inputTokens: inTok, outputTokens: outTok, latencyMs: latency,
+      const baseline = cost(BASELINE, usage); // Opus-only would need no judge
+      const inTok = totalInput(usage), outTok = usage.output;
+      await log({ model, reason, inTok, outTok, latency, cost: actual, routerCost, baseline, success: true, response: answer });
+      await send("done", { id, model, reason, inputTokens: inTok, cachedInputTokens: usage.cacheRead, outputTokens: outTok, latencyMs: latency,
         costUsd: actual, answerCostUsd: answerCost, routerCostUsd: routerCost, baselineUsd: baseline, stopReason,
         empty: !gotText });
     } catch (err) {
@@ -274,7 +293,14 @@ async function fetchRouting(env: Env, sessionId: string): Promise<{ reason: stri
     }
     const judge = stats.targets?.judge;
     const routerCost = judge
-      ? cost(MODELS[judge.model], (judge.prompt_tokens ?? 0), judge.completion_tokens ?? 0)
+      ? cost(MODELS[judge.model], {
+          // Switchyard's prompt_tokens include cached and cache-creation tokens (checked against
+          // session-stats totals), so split them back out to price each at its own rate.
+          input: Math.max(0, (judge.prompt_tokens ?? 0) - (judge.cached_tokens ?? 0) - (judge.cache_creation_tokens ?? 0)),
+          cacheWrite: judge.cache_creation_tokens ?? 0,
+          cacheRead: judge.cached_tokens ?? 0,
+          output: judge.completion_tokens ?? 0,
+        })
       : null;
     return { reason, routerCost };
   } catch {
@@ -299,10 +325,44 @@ app.get("/api/stats", async (c) => {
                 COALESCE(SUM(baseline_usd),0) AS baseline FROM requests ${w}`).bind(...binds).first(),
     db.prepare(`SELECT model, COUNT(*) AS n, AVG(latency_ms) AS avg_latency, SUM(cost_usd) AS spend
                 FROM requests ${wOk} GROUP BY model ORDER BY n DESC`).bind(...binds).all(),
-    db.prepare(`SELECT id, ts, strategy, prompt, model, routing_reason, input_tokens, output_tokens, latency_ms,
-                cost_usd, baseline_usd, success, error FROM requests ${w} ORDER BY ts DESC LIMIT 100`).bind(...binds).all(),
+    db.prepare(`SELECT id, ts, session_id, turn, strategy, prompt, model, routing_reason, input_tokens, output_tokens,
+                latency_ms, cost_usd, baseline_usd, success, error FROM requests ${w} ORDER BY ts DESC LIMIT 100`).bind(...binds).all(),
   ]);
   return c.json({ totals, perModel: perModel.results, recent: recent.results });
+});
+
+/** One logged request in full: question, judge decision and answer. */
+app.get("/api/requests/:id", async (c) => {
+  const row = await c.env.DB.prepare("SELECT * FROM requests WHERE id = ?").bind(c.req.param("id")).first();
+  return row ? c.json(row) : c.json({ error: "not found" }, 404);
+});
+
+/** The whole log as CSV (questions, judge decisions, models, answers, tokens, costs). */
+app.get("/api/export.csv", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT ts, session_id, turn, strategy, prompt, routing_reason, model, response, input_tokens, output_tokens,
+            latency_ms, cost_usd, router_cost_usd, baseline_usd, success, error FROM requests ORDER BY ts`,
+  ).all<Record<string, unknown>>();
+  const cols = ["time_utc", "session_id", "turn", "strategy", "question", "judge_decision", "model", "answer",
+    "input_tokens", "output_tokens", "latency_ms", "cost_usd", "judge_cost_usd", "opus_baseline_usd", "success", "error"];
+  const esc = (v: unknown) => {
+    if (v == null) return "";
+    let s = String(v);
+    if (/^[=+\-@]/.test(s)) s = `'${s}`; // stop spreadsheets treating model text as formulas
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [cols.join(",")];
+  for (const r of results) {
+    lines.push([new Date(Number(r.ts)).toISOString(), r.session_id, r.turn, r.strategy, r.prompt, r.routing_reason,
+      r.model, r.response, r.input_tokens, r.output_tokens, r.latency_ms, r.cost_usd, r.router_cost_usd,
+      r.baseline_usd, r.success, r.error].map(esc).join(","));
+  }
+  return new Response(lines.join("\r\n"), {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="switchyard-demo-log-${new Date().toISOString().slice(0, 10)}.csv"`,
+    },
+  });
 });
 
 app.post("/api/reset", async (c) => {

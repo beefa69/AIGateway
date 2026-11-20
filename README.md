@@ -77,6 +77,14 @@ Task "⚖ Haiku judge: 60% chance Haiku solves it (< 90% needed) → Opus".
 on tool-call signals (errors, loops, stalls), so plain chat always stays on Haiku. The Switchyard
 docs say this is expected. To bring it back, add it to `strategies` in `models.json`.
 
+**Both judges rate the latest question, not the whole conversation.** By default Switchyard's judge
+sees the conversation's *opening* message plus the latest one, and the packaged capability prompt
+forecasts whether a *coding agent* finishes a task against a verifier. In a chat that opened with a hard
+question, that made later easy questions look hard: "capital of New Zealand" scored 55% and went to
+Opus. Both routes now set their own `prompt` in `routes.toml`, written for chat and told to judge the
+latest message, with earlier turns as context only. Same follow-up after the same opening question:
+Task now scores it 98% and Tiered picks Haiku.
+
 Things worth telling your audience:
 
 - **Only custom mode can choose among three models.** Capability mode and Auto are two-tier.
@@ -104,6 +112,25 @@ Verified by testing, not assumed:
   Worker turns that into the "⚖" line under each reply, which also appears when you hover a model cell on
   the dashboard. The same response's `targets.judge` token counts are priced with `models.json` to get the
   judge's cost.
+
+## What gets logged
+
+Every request is one row in D1 (`requests`), local or hosted:
+
+| Column | What |
+|---|---|
+| `ts`, `session_id`, `turn` | When, which browser session, and which question of the conversation (1 = opening) |
+| `strategy`, `prompt` | Route used, and the question (first 500 chars) |
+| `routing_reason` | The judge's decision, e.g. "Haiku judge: 55% chance Haiku solves it (< 90% needed) → Opus" |
+| `model`, `response` | Model that answered, and its answer (first 8,000 chars) |
+| `input_tokens`, `output_tokens`, `latency_ms` | Input includes cached tokens |
+| `cost_usd`, `router_cost_usd`, `baseline_usd` | Total cost (answer + judge), the judge's share, and the same tokens at Opus rates |
+| `success`, `error` | Failed requests are logged too |
+
+On the dashboard, click any row to see the question, judge decision and full answer. **Download log (CSV)**
+exports everything. Both are behind the passcode when hosted. Costs price uncached input, cache writes,
+cache reads and output separately, using the rates in `models.json`. Rows logged before 2026-11-20 01:10 UTC
+under-counted input on long conversations (cached tokens were dropped) and have no answer text.
 
 ## Verify routing is active
 

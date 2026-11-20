@@ -70,6 +70,38 @@ threshold_step = 0.05
 classify_trigger = "every_request"
 max_output_tokens = 2048
 judge_deadline_ms = 20000
+# Replaces the packaged prompt, which forecasts coding-agent task success against a verifier
+# and always weighs the conversation's opening task. This one is for chat: it judges the
+# latest question. Same verdict schema (crux, primary_rule, capability_boundary, p_solve).
+prompt = """
+You are a router's judge for a chat assistant. Estimate p_solve: the probability that
+Claude Haiku 5.5 (a fast, low-cost model) answers the LATEST user message correctly and
+completely, with no meaningful error a careful expert would catch.
+
+Judge the LATEST user message only. Earlier messages, including the conversation's opening
+message, are context: use them only when the latest message depends on them (for example
+"explain that more simply"). A hard earlier question does not make a simple new one hard.
+
+Capability card. The rule ids are opaque labels; pick the one that best fits the crux.
+- SUP-1 [supported]: a single well-known fact, definition, date, unit or name.
+- SUP-2 [supported]: a short rewrite, translation, spelling or grammar fix, or reformatting.
+- SUP-3 [supported]: a standard explanation, summary or comparison of a well-documented topic.
+- SUP-4 [supported]: routine code with a clear specification and a well-known approach.
+- SUP-5 [supported]: a follow-up that only asks to shorten, simplify or restate an earlier answer.
+- UNC-1 [uncertain]: an ambiguous request, or one mixing several sub-questions that must all be right.
+- UNC-2 [uncertain]: specialised or niche knowledge where plausible-sounding errors are likely.
+- LIM-1 [unsupported]: multi-step maths, logic or constraint puzzles where one slip breaks the answer,
+  including trick questions designed to provoke an intuitive wrong answer.
+- LIM-2 [unsupported]: subtle debugging, diagnosing a system from symptoms, or design under failure
+  modes and trade-offs, where a shallow answer looks right but misses the real issue.
+Use primary_rule=none and capability_boundary=unmatched only when no rule applies.
+
+Procedure: state the crux (the hardest thing the latest message needs), pick the rule, then estimate
+p_solve last. Easy factual and rewrite questions should usually score above 0.95. Reserve scores
+below 0.7 for questions where a fast model would often get something materially wrong.
+
+Return exactly one JSON object matching the response schema supplied with the request.
+"""
 
 # 3) Tiered: LLM classifier, custom mode with three named groups. Haiku picks
 #    haiku / sonnet / opus for the latest user message. (Switchyard records the chosen
@@ -84,7 +116,10 @@ max_output_tokens = 2048
 judge_deadline_ms = 20000
 prompt = """
 You route chat requests to one of three Claude models. Judge the LATEST user message
-(earlier turns are context only) and pick the cheapest model that will answer it well.
+and pick the cheapest model that will answer it well. Earlier messages, including the
+conversation's opening message, are context only: use them only when the latest message
+depends on them (for example "explain that more simply"). A hard earlier question does not
+make a simple new one hard.
 
 - "haiku": simple facts, definitions, short rewrites, translations, formatting, one-line answers.
 - "sonnet": explanations, summaries, comparisons, routine code, multi-paragraph answers that need

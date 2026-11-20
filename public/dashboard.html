@@ -18,6 +18,7 @@
       <select id="fStrategy"><option value="">All strategies</option></select>
       <span class="spacer"></span>
       <label><input type="checkbox" id="auto" checked /> Auto-refresh</label>
+      <a class="button" href="/api/export.csv" download>Download log (CSV)</a>
       <button id="reset">Reset demo data</button>
     </div>
     <div class="grid">
@@ -31,15 +32,23 @@
       <div class="card"><h2>Average latency per model</h2><div style="height:240px"><canvas id="bar"></canvas></div></div>
     </div>
     <div class="card" style="margin-bottom:24px">
-      <h2>Recent queries</h2>
+      <h2>Recent queries <span class="hint">· click a row for the full question, judge decision and answer</span></h2>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Time</th><th>Prompt</th><th>Model</th><th>Strategy</th><th class="num">Latency</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+          <thead><tr><th>Time</th><th class="num">Turn</th><th>Question</th><th>Strategy</th><th>Judge decision</th><th>Model</th><th class="num">Latency</th><th class="num">Tokens in / out</th><th class="num">Cost</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
     </div>
   </main>
+
+  <dialog id="detail">
+    <header><h1>Request detail</h1><nav><button id="closeDetail">Close</button></nav></header>
+    <div class="list detail" id="detailBody"></div>
+  </dialog>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
   <script src="/dashboard.js"></script>
 </body>
 </html>
