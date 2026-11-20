@@ -266,20 +266,28 @@ forces. `npm run dev` still runs the fully local version, which needs no tunnel 
 
 All 15 demo questions per strategy, each sent as a fresh one-message conversation (`npm run demo:run`).
 
+**Current configuration** (chat-specific judge prompts, latest question only; final run):
+
 | Strategy | Haiku | Sonnet | Opus | Spend | If all Opus |
 |---|---|---|---|---|---|
-| Tiered classifier | 5 (all easy) | 5 (all medium) | 5 (all hard) | $0.129 | $0.165 |
-| Task classifier, threshold 0.6 | 13 | – | 2 (Node leak, payment design) | $0.049 | $0.152 |
-| Task classifier, threshold 0.85 (current) | 10 | – | 5 (3 hard, 2 medium) | $0.081 | $0.145 |
-| Auto (not in the UI) | 15 | – | – | $0.004 | $0.152 |
+| Tiered classifier | 5 (all easy) | 5 (all medium) | 5 (all hard) | $0.114 | $0.143 |
+| Task classifier | 10 (all easy and medium, scored 95–99%) | – | 5 (all hard, scored 30–55%) | $0.096 | $0.138 |
 
-- **Tiered** split the set exactly by difficulty, on the first configuration. No tuning was needed.
-- **Task** sends a question to Opus when the judge's estimate that Haiku can solve it falls below the
-  threshold. At 0.6 only two questions went to Opus, so the threshold is now `base_threshold = 0.85`
-  with `threshold_step = 0.05` (0.9 when the verdict is uncertain). Opus now gets the Python dedupe bug
-  (judge: 80%), the Node.js leak (60%), the payment design (60%), the word-count function (80%) and the
-  HTTPS explanation (85%, uncertain). The judge still rates the bat-and-ball (97%) and seating (93%)
-  puzzles as easy for Haiku. That's its honest call and a good talking point about judge calibration.
+- **Tiered** splits the set exactly by difficulty.
+- **Task** now separates cleanly too. Easy and medium questions score 95–99% (Haiku). Every hard question
+  scores 30–55%, and the judge marks it "unsupported", which raises the bar to 95% (Opus). The threshold
+  is `base_threshold = 0.85` with `threshold_step = 0.05`.
+
+How it got here (same 15 questions):
+
+| Run | Result |
+|---|---|
+| Task, packaged agent prompt, threshold 0.6 | 13 Haiku / 2 Opus. The coding-agent rubric rated most hard questions solvable (72–97%). |
+| Task, packaged agent prompt, threshold 0.85 | 10 / 5, but mixed: 2 medium went to Opus, and the bat-and-ball and seating puzzles stayed on Haiku. |
+| Task, chat prompt, threshold 0.85 (current) | 10 / 5, exactly easy+medium vs hard. |
+| Tiered, any version | 5 / 5 / 5 |
+| Auto (not in the UI) | 15 Haiku |
+
 - **Auto** sent everything to Haiku. That is expected for chat with no tool signals, which is why it's not
   in the dropdown.
 - The "saved" figure for Tiered is modest because medium questions go to Sonnet and produce long answers.
