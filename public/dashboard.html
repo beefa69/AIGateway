@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Switchyard Dashboard</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1><span>Switchyard</span> Router Demo</h1>
+    <nav><a href="/">Chat</a><a href="/dashboard" class="active">Dashboard</a></nav>
+  </header>
+  <main>
+    <div class="filters">
+      <select id="fModel"><option value="">All models</option></select>
+      <select id="fStrategy"><option value="">All strategies</option></select>
+      <span class="spacer"></span>
+      <label><input type="checkbox" id="auto" checked /> Auto-refresh</label>
+      <button id="reset">Reset demo data</button>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="k">Queries</div><div class="v" id="kQueries">–</div></div>
+      <div class="card"><div class="k">Actual spend</div><div class="v" id="kSpend">–</div></div>
+      <div class="card"><div class="k">If every query went to Opus</div><div class="v" id="kBaseline">–</div></div>
+      <div class="card"><div class="k">Saved</div><div class="v" id="kSaved" style="color:var(--accent)">–</div></div>
+    </div>
+    <div class="two">
+      <div class="card"><h2>Share of queries per model</h2><div style="height:240px"><canvas id="pie"></canvas></div></div>
+      <div class="card"><h2>Average latency per model</h2><div style="height:240px"><canvas id="bar"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-bottom:24px">
+      <h2>Recent queries</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Time</th><th>Prompt</th><th>Model</th><th>Strategy</th><th class="num">Latency</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+  <script src="/dashboard.js"></script>
+</body>
+</html>

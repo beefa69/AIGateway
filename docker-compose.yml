@@ -1,0 +1,16 @@
+services:
+  switchyard:
+    build:
+      context: ./switchyard
+    image: switchyard-demo:local
+    env_file: .env            # must define ANTHROPIC_API_KEY (see .env.example)
+    ports:
+      - "127.0.0.1:4000:4000" # loopback only: nothing outside this PC can reach it
+    volumes:
+      - ./switchyard/routes.toml:/config/routes.toml:ro  # edit config without rebuilding
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/4000"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+    restart: unless-stopped

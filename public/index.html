@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Switchyard Router Demo</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1><span>Switchyard</span> Router Demo</h1>
+    <nav><a href="/" class="active">Chat</a><a href="/dashboard">Dashboard</a></nav>
+  </header>
+  <main class="chat-layout">
+    <div class="toolbar">
+      <label for="strategy">Strategy</label>
+      <select id="strategy"></select>
+      <button id="demoBtn">Demo questions</button>
+      <button id="newBtn" title="Clear the conversation and start a new session">New chat</button>
+      <div class="totals">
+        <span>Session: <b id="tActual">$0.0000</b></span>
+        <span>If all Opus: <b id="tBaseline">$0.0000</b></span>
+        <span class="saved">Saved: <b id="tSaved">0%</b></span>
+      </div>
+    </div>
+    <div id="log">
+      <div class="empty" id="empty">
+        Ask anything, or open <b>Demo questions</b>. Switchyard decides whether Haiku, Sonnet or Opus answers.
+        The tag under each reply shows which model answered, how long it took and what it cost.
+      </div>
+    </div>
+    <form class="composer" id="form">
+      <textarea id="input" placeholder="Type a question… (Enter to send, Shift+Enter for a new line)" rows="1"></textarea>
+      <button class="primary" id="send">Send</button>
+    </form>
+  </main>
+
+  <dialog id="demoDialog">
+    <header><h1>Demo questions</h1><nav><button id="closeDemo">Close</button></nav></header>
+    <div class="list" id="demoList"></div>
+  </dialog>
+  <script src="/app.js"></script>
+</body>
+</html>

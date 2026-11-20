@@ -1,0 +1,19 @@
+[
+  { "level": "easy", "text": "What is the capital of Australia?" },
+  { "level": "easy", "text": "Rewrite this to sound more polite: \"Send me the report now.\"" },
+  { "level": "easy", "text": "How many days are there in a leap year?" },
+  { "level": "easy", "text": "Translate \"Where is the train station?\" into French." },
+  { "level": "easy", "text": "Fix the spelling: \"I recieved the pakage yesturday.\"" },
+
+  { "level": "medium", "text": "Explain how HTTPS keeps a web request private, in about 150 words, for a non-technical manager." },
+  { "level": "medium", "text": "Summarise the main trade-offs between SQL and NoSQL databases in five bullet points." },
+  { "level": "medium", "text": "Explain what a Kubernetes pod is and how it differs from a container." },
+  { "level": "medium", "text": "Compare renting versus buying a home: give three arguments for each." },
+  { "level": "medium", "text": "Write a Python function that returns the n most common words in a text, ignoring case and punctuation." },
+
+  { "level": "hard", "text": "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. A glove costs twice the ball plus the bat. What does the glove cost? Show each step and check your answer." },
+  { "level": "hard", "text": "This Python function should remove duplicates while keeping order, but some inputs come back wrong. Find every bug and explain why:\n\ndef dedupe(items, seen=set()):\n    out = []\n    for i in range(len(items)):\n        if items[i] in seen:\n            items.pop(i)\n        else:\n            seen.add(items[i])\n            out.append(items[i])\n    return out" },
+  { "level": "hard", "text": "Five people (A–E) sit in a row. A is not at either end. B sits immediately right of C. D is somewhere left of A. E is at an end, and is not next to B. List every valid seating and prove there are no others." },
+  { "level": "hard", "text": "Our Node.js API leaks memory slowly in production but not in tests. We use an in-process LRU cache, EventEmitter listeners added per request, and a global Map keyed by user ID for rate limiting. Reason through which of these most likely leaks, how to confirm it with heap snapshots, and how to fix each one." },
+  { "level": "hard", "text": "Design an idempotent payment-capture endpoint that survives client retries, network partitions and a crash between charging the card and writing to the database. Explain the data model, the request flow and the failure cases." }
+]

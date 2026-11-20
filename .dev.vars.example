@@ -1,0 +1,5 @@
+# Copy to .dev.vars (gitignored). Read by wrangler dev. No API key here: the Worker never sees it.
+# Passcode for the dashboard's "Reset demo data" button.
+ADMIN_PASSCODE=change-me
+# Optional: require this passcode before anyone can use the chat API.
+# APP_PASSCODE=

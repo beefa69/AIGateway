@@ -1,0 +1,124 @@
+# Switchyard standalone-server config for the Switchyard Router Demo.
+# Schema: docs/reference/toml_schema.md in NVIDIA-NeMo/Switchyard (commit 171d613).
+# The standalone server is documented for demos and local evaluation only, which is how it is used here.
+#
+# One server exposes three routes. The UI's strategy dropdown chooses one by sending
+# its route `id` as the request's `model`, so switching strategy needs no restart.
+#
+# NOTE: model IDs are duplicated here because Switchyard needs them in its own config.
+# Prices live only in ../models.json.
+
+schema_version = 1
+
+[llm_clients.anthropic]
+format = "anthropic_messages"
+base_url = "https://api.anthropic.com"
+api_key_env = "ANTHROPIC_API_KEY"
+max_retries = 2
+timeout_ms = 120000
+
+# ---------------------------------------------------------------- targets
+# Answering targets share a short "be concise" system prompt to keep live-demo replies quick.
+# Switchyard applies target prompts only to completions, never to the judge.
+
+[targets.haiku]
+id = "claude-haiku-5-5"
+llm_client = "anthropic"
+reasoning_effort = "low"
+system_prompt = "You are answering questions in a live demo. Answer concisely: under about 300 words unless the task genuinely needs more. Prefer short paragraphs or bullets; skip preamble."
+
+[targets.sonnet]
+id = "claude-sonnet-5-5"
+llm_client = "anthropic"
+reasoning_effort = "low"
+system_prompt = "You are answering questions in a live demo. Answer concisely: under about 300 words unless the task genuinely needs more. Prefer short paragraphs or bullets; skip preamble."
+
+[targets.opus]
+id = "claude-opus-5-5"
+llm_client = "anthropic"
+reasoning_effort = "low"
+system_prompt = "You are answering questions in a live demo. Answer concisely: under about 300 words unless the task genuinely needs more. Prefer short paragraphs or bullets; skip preamble."
+
+# Judge-only target (same model as `haiku`, kept separate so /v1/stats shows judge calls apart).
+[targets.judge]
+id = "claude-haiku-5-5"
+llm_client = "anthropic"
+reasoning_effort = "low"
+
+# ---------------------------------------------------------------- routes
+
+# 1) Auto: Switchyard's recommended preset (Stage router, efficient-first, threshold 0.5).
+#    It routes on tool-call signals. Plain chat has none, so it stays on the efficient tier.
+#    That is documented behaviour and worth showing your audience.
+[routes.auto]
+id = "switchyard/auto"
+type = "auto"
+efficient_target = "haiku"
+capable_target = "opus"
+
+# 2) Task: LLM classifier, capability mode. Haiku judges whether the efficient model can
+#    solve the task (p_solve); below the threshold it goes to Opus. Two tiers.
+[routes.task]
+id = "switchyard/task"
+type = "llm_classifier"
+mode = "capability"
+classifier_target = "judge"
+weak_target = "haiku"
+strong_target = "opus"
+base_threshold = 0.6
+threshold_step = 0.1
+classify_trigger = "every_request"
+max_output_tokens = 2048
+judge_deadline_ms = 20000
+
+# 3) Tiered: LLM classifier, custom mode with three named groups. Haiku picks
+#    haiku / sonnet / opus for the latest user message. (Switchyard records the chosen
+#    group per request but not free-text judge output, so the schema asks only for the target.)
+[routes.tiered]
+id = "switchyard/tiered"
+type = "llm_classifier"
+mode = "custom"
+default_target = "sonnet"
+classify_trigger = "every_request"
+max_output_tokens = 2048
+judge_deadline_ms = 20000
+prompt = """
+You route chat requests to one of three Claude models. Judge the LATEST user message
+(earlier turns are context only) and pick the cheapest model that will answer it well.
+
+- "haiku": simple facts, definitions, short rewrites, translations, formatting, one-line answers.
+- "sonnet": explanations, summaries, comparisons, routine code, multi-paragraph answers that need
+  care but no deep reasoning.
+- "opus": multi-step reasoning, maths or logic puzzles, subtle or tricky code debugging,
+  architecture trade-offs, anything where a wrong answer is likely without careful thought.
+
+Return JSON matching the response schema supplied with the request.
+"""
+response_schema = '''
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "object",
+      "properties": {
+        "target": { "type": "string", "enum": ["haiku", "sonnet", "opus"] }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["decision"],
+  "additionalProperties": false
+}
+'''
+
+[routes.tiered.models]
+judge = ["judge"]
+haiku = ["haiku"]
+sonnet = ["sonnet"]
+opus = ["opus"]
+any = ["haiku", "sonnet", "opus"]
+
+[routes.tiered.policy]
+type = "target_selector"
+selector = "/decision/target"
