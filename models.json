@@ -6,7 +6,7 @@
     "claude-haiku-5-5": {
       "label": "Haiku 5.5",
       "tier": "cheap / fast",
-      "color": "#2e9e6a",
+      "color": "#0f8a7a",
       "inputPerMTok": 0.1,
       "outputPerMTok": 0.5,
       "cacheWritePerMTok": 0.125,
@@ -15,7 +15,7 @@
     "claude-sonnet-5-5": {
       "label": "Sonnet 5.5",
       "tier": "mid",
-      "color": "#3b74d6",
+      "color": "#5555f9",
       "inputPerMTok": 2,
       "outputPerMTok": 10,
       "cacheWritePerMTok": 2.5,
@@ -24,7 +24,7 @@
     "claude-opus-5-5": {
       "label": "Opus 5.5",
       "tier": "frontier",
-      "color": "#b4529c",
+      "color": "#e0480b",
       "inputPerMTok": 4,
       "outputPerMTok": 20,
       "cacheWritePerMTok": 5,

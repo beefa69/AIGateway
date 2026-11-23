@@ -1,4 +1,6 @@
-# Switchyard Router Demo
+# AI Gateway Live Demo
+
+(Formerly "Switchyard Router Demo". The routing is done by NVIDIA NeMo Switchyard.)
 
 A chatbot that shows [NVIDIA NeMo Switchyard](https://github.com/NVIDIA-NeMo/Switchyard) routing each
 question to **Claude Haiku 5.5**, **Sonnet 5.5** or **Opus 5.5**. Under each reply you see which model
