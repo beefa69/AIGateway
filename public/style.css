@@ -1,22 +1,26 @@
-/* Palette modelled on Cloudera's corporate site: deep purple-navy, indigo, bright blue, orange. */
+/* Palette modelled on Cloudera's corporate site: deep purple-navy, indigo, bright blue, orange.
+   Light is the default; the header toggle (theme.js) sets data-theme="dark" on <html>. */
 :root {
   --navy: #120046; --indigo: #413cc3; --blue: #5555f9; --orange: #ff550d;
-  --bg: #f5f8fa; --panel: #ffffff; --text: #120046; --muted: #5a5b6b; --border: #dbe3ea;
-  --accent: #ff550d; --primary: #413cc3; --primary-text: #ffffff; --link: #5555f9;
-  --user: #ebf1f4; --danger: #c0392b; --shadow: 0 1px 2px rgba(18,0,70,.08);
-  --header-bg: #120046; --header-text: #ffffff; --header-muted: #b9b6e0;
+  --bg: #f8fafc; --panel: #ffffff; --text: #1d1640; --muted: #646478; --border: #e4e8ef;
+  --accent: #ff550d; --primary: #413cc3; --primary-text: #ffffff; --link: #4646e0;
+  --user: #f0efff; --danger: #c0392b; --shadow: 0 1px 3px rgba(18,0,70,.06);
+  --header-bg: #ffffff; --header-text: #120046; --header-muted: #646478;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #0c0030; --panel: #17104a; --text: #ece9ff; --muted: #a9a4d4; --border: #2e2670;
-    --primary: #5555f9; --link: #8f8fff; --user: #241a66; --shadow: none;
-    --header-bg: #08001f; color-scheme: dark; }
+:root[data-theme="dark"] {
+  --bg: #0c0030; --panel: #17104a; --text: #ece9ff; --muted: #a9a4d4; --border: #2e2670;
+  --primary: #5555f9; --link: #8f8fff; --user: #241a66; --shadow: none;
+  --header-bg: #08001f; --header-text: #ffffff; --header-muted: #b9b6e0;
+  color-scheme: dark;
 }
+.theme-toggle { font-size: 13px; padding: 4px 12px; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.5 "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--header-bg);
-  color: var(--header-text); border-bottom: 3px solid var(--orange); flex-wrap: wrap; }
+  color: var(--header-text); border-bottom: 1px solid var(--border); box-shadow: inset 0 -2px 0 var(--orange); flex-wrap: wrap; }
+header nav { align-items: center; }
 header h1 { font-size: 17px; margin: 0; font-weight: 700; }
 header h1 span { color: var(--orange); }
 header nav { margin-left: auto; display: flex; gap: 14px; }

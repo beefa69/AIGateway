@@ -59,8 +59,7 @@ async function init() {
   for (const p of cfg.presets) $("fPreset").add(new Option(p.label, p.id));
   $("fModel").onchange = $("fStrategy").onchange = $("fPreset").onchange = load;
   renderPresets();
-  const text = getComputedStyle(document.body).color;
-  Chart.defaults.color = text;
+  applyChartTheme();
   pie = new Chart($("pie"), { type: "doughnut", data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
     options: { maintainAspectRatio: false, plugins: { legend: { position: "right" } } } });
   bar = new Chart($("bar"), { type: "bar", data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
@@ -69,6 +68,14 @@ async function init() {
   await load();
   setInterval(() => { if ($("auto").checked) load(); }, 4000);
 }
+
+/** Chart text and grid lines follow the page theme (theme.js fires "themechange"). */
+function applyChartTheme() {
+  const css = getComputedStyle(document.documentElement);
+  Chart.defaults.color = css.getPropertyValue("--muted").trim() || "#646478";
+  Chart.defaults.borderColor = css.getPropertyValue("--border").trim() || "#e4e8ef";
+}
+document.addEventListener("themechange", () => { applyChartTheme(); pie?.update(); bar?.update(); });
 
 async function load() {
   const q = new URLSearchParams();
